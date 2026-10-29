@@ -136,3 +136,107 @@ The SQLite database is not separately encrypted.
   unmodified from its publisher's build. They don't show that the publisher
   is trustworthy. The dependency list is kept deliberately small for that
   reason.
+
+## Platform credentials (milestone 6)
+
+- **Where secrets live:** only in the **macOS Keychain**, via `@napi-rs/keyring`:
+  - platform access and refresh tokens
+  - the Instagram and Pinterest app secrets
+  - the R2 secret access key
+
+  Service names are `com.atelierhalle.media-manager` in production and
+  `….dev` in development. Tests use an in-memory store and never touch your
+  Keychain.
+- **What SQLite holds:** only opaque references (`cred:<uuid>`) and
+  non-secret identifiers (app IDs, R2 account ID, bucket, access key ID).
+- **No plaintext fallback.** If the Keychain can't be used:
+  - saving a secret fails with an actionable 503;
+  - publishing pauses as a transient error with "Keychain unavailable";
+  - the hourly scheduler maintenance re-checks it.
+  - `node scripts/keychain-probe.ts` verifies Keychain access on this Mac.
+    It was verified interactively on 2026-10-29.
+  - Background (LaunchAgent) access is checked in milestone 8.
+- **The browser can write secrets but never read them.** The setup API
+  reports only `secretSaved: true`. Secret fields are never pre-filled and
+  are cleared from page state after saving.
+- **Tests prove** that secrets and tokens don't appear in API responses,
+  SQLite rows or server logs.
+  - A repository scan (`npm run check:secrets`, part of `npm run check`)
+    catches credential-shaped strings in tracked files. It stands in for
+    GitHub secret scanning, which isn't available for this private repo.
+
+## OAuth
+
+- **Authorization-code flow with confidential, server-side exchange.**
+  Neither platform documents PKCE, so it isn't used. See
+  `docs/platform-capabilities.md`.
+- **`state`:**
+  - 32 random bytes, single-use, expiring after 10 minutes;
+  - stored only as a SHA-256 digest;
+  - **bound to the browser session that started the flow**;
+  - at most 20 pending flows at a time.
+  - A code with a wrong, reused, expired, cross-session or cross-platform
+    `state` is never exchanged. Tests check each case.
+- **Callback:**
+  - The platform redirects to `http://localhost:<port>/oauth/<platform>/callback`
+    (or `127.0.0.1`), which must exactly match the URI registered with the
+    platform.
+  - The callback page is static, with no inline script or style, and has the
+    full Content-Security-Policy.
+  - Its script moves to the canonical `127.0.0.1` origin where the session
+    cookie lives, removes the code from the address bar and history, and
+    posts `code` + `state` to `/api/oauth/<platform>/complete` with the
+    session cookie and CSRF token.
+  - Query strings are redacted from logs.
+- **After the exchange**, the real identity and eligibility are checked
+  (Instagram professional account and publish permission; Pinterest business
+  account and required scopes) *before* any token is stored. Tokens from
+  ineligible or duplicate identities are discarded.
+- **Minimum scopes:**
+  - Instagram: `instagram_business_basic`, `instagram_business_content_publish`
+  - Pinterest: `user_accounts:read`, `boards:read`, `pins:read`, `pins:write`
+- **Renewal** is serialized per account. Instagram tokens are renewed when
+  less than 10 days remain (and at least 24 hours old); Pinterest when less
+  than 1 day remains. Rotated refresh tokens are stored atomically.
+- **Disconnecting** stops publishing first, then deletes the Keychain item.
+  Neither platform supports revoking user tokens through the API, so the UI
+  says to remove the app in the platform's own settings.
+
+## Outbound network
+
+- All server-side HTTP goes through one client (`src/platforms/http.ts`):
+  - **exact origin allowlist**: Instagram, Pinterest (and sandbox), and the
+    configured R2 account endpoint;
+  - **HTTPS only** (plain HTTP only for loopback fakes in tests);
+  - **no redirects followed**, no credentials in URLs;
+  - 20 s timeouts (60 s for uploads) and a 2 MiB response cap.
+  - Error messages never include URLs, query strings or response bodies.
+    Provider error text is reduced to known fields, truncated, and
+    long token-like strings are redacted.
+- The server never fetches arbitrary URLs. Profile pictures aren't downloaded
+  yet. When they are, it'll be from an allowlist of platform CDNs and through
+  the image pipeline.
+
+## Instagram media delivery (Cloudflare R2)
+
+- Instagram fetches images from a public URL, so for each publish attempt
+  **one prepared derivative** (sRGB JPEG with metadata stripped) is uploaded
+  to a **private** bucket under a random key.
+- Instagram gets a **15-minute presigned GET URL** for that one object.
+- The object is deleted once Instagram reports the container `FINISHED` or
+  `ERROR`. A 1-day bucket lifecycle rule is the backstop.
+- Nothing else is ever exposed: not the database, the gallery, credentials,
+  or the local server. There is no inbound tunnel.
+- Requests are signed with AWS Signature V4, implemented on `node:crypto`
+  with no dependencies and verified against AWS's published test vectors.
+- **Instagram's copy:** deleting the staged object doesn't delete the copy
+  Instagram has already fetched.
+
+## Live publishing safeguards
+
+- Real platform adapters are used only when all of these hold:
+  - the server runs in production;
+  - it was started with `MEDIA_MANAGER_LIVE_PUBLISHING=enabled`;
+  - that platform's developer app is set up.
+- Otherwise due posts are marked "not published". Simulated platforms are
+  refused in production, and tests point at loopback fakes.

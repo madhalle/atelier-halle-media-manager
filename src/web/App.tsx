@@ -15,6 +15,7 @@ import {
 } from "./api.ts";
 import { GuardProvider, useGuard } from "./dialogs.tsx";
 import { HealthBanner, HealthLine, SettingsDialog, useHealth } from "./Health.tsx";
+import { PlatformSetupDialog } from "./PlatformSetup.tsx";
 import { Sidebar, type AccountActions } from "./Sidebar.tsx";
 
 type Boot = { kind: "loading" } | { kind: "signed-out" } | { kind: "error"; message: string } | { kind: "ready"; status: Status; accounts: Account[] };
@@ -80,6 +81,8 @@ function Shell({ status, initialAccounts }: { status: Status; initialAccounts: A
   const [renameTarget, setRenameTarget] = useState<string | null>(null);
   const [notice, setNotice] = useState<{ text: string; tone: "info" | "error" } | null>(null);
   const [settingsOpen, setSettingsOpen] = useState(false);
+  const [platformsOpen, setPlatformsOpen] = useState(false);
+  const [platformsVersion, setPlatformsVersion] = useState(0);
   const [health, refreshHealth] = useHealth();
   useEffect(() => {
     if (notice) refreshHealth();
@@ -210,7 +213,7 @@ function Shell({ status, initialAccounts }: { status: Status; initialAccounts: A
 
       <aside id="sidebar" aria-label="Accounts sidebar">
         <Sidebar accounts={accounts} selectedId={selectedId} actions={actions} onAdd={() => setAddOpen(true)} />
-        <HealthLine health={health} version={status.version} onSettings={() => setSettingsOpen(true)} />
+        <HealthLine health={health} version={status.version} onSettings={() => setSettingsOpen(true)} onPlatforms={() => setPlatformsOpen(true)} />
       </aside>
       {drawerOpen && <div className="backdrop" aria-hidden="true" onClick={() => setDrawerOpen(false)} />}
 
@@ -226,7 +229,7 @@ function Shell({ status, initialAccounts }: { status: Status; initialAccounts: A
         )}
         {selected ? (
           <AccountPanel
-            key={selected.id}
+            key={`${selected.id}:${platformsVersion}`}
             account={selected}
             accounts={accounts}
             openPostId={openPostId}
@@ -252,6 +255,11 @@ function Shell({ status, initialAccounts }: { status: Status; initialAccounts: A
         )}
       </main>
 
+      <PlatformSetupDialog
+        open={platformsOpen}
+        onClose={() => setPlatformsOpen(false)}
+        onChanged={() => setPlatformsVersion((n) => n + 1)}
+      />
       <SettingsDialog
         open={settingsOpen}
         settings={health?.settings ?? null}

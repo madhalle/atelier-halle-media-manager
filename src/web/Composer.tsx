@@ -3,6 +3,9 @@
 import { useEffect, useId, useState, type FormEvent, type ReactNode } from "react";
 import {
   ApiError,
+  listBoards,
+  setPostBoard,
+  type Board,
   deletePost,
   derivativeUrl,
   PLATFORM_ASPECTS,
@@ -283,16 +286,8 @@ export function Composer({ post, account, defaultTimezone, onNotice, onSaved, on
                 over={chars(fields.altText) > LIMITS.pinAlt}
                 issues={issuesFor("altText")}
               />
-              <div className="field">
-                <span className="field-label">Board</span>
-                <p>{post.pinBoardName ?? <span className="hint">No board chosen.</span>}</p>
-                <p className="hint">
-                  {account.connection.state === "connected"
-                    ? "Board selection arrives with Pinterest sign-in."
-                    : "Boards load from Pinterest after this account is connected."}
-                </p>
-                <FieldIssues issues={issuesFor("pinBoard")} />
-              </div>
+              <BoardPicker post={post} account={account} editable={editable} dirty={dirty} onSaved={onSaved} />
+              <FieldIssues issues={issuesFor("pinBoard")} />
             </>
           )}
           <details className="unsupported">
@@ -432,6 +427,64 @@ function TextField({ label, value, onChange, counters, over, disabled, issues, h
         </p>
       )}
       <FieldIssues issues={issues} />
+    </div>
+  );
+}
+
+function BoardPicker({ post, account, editable, dirty, onSaved }: { post: Post; account: Account; editable: boolean; dirty: boolean; onSaved: (p: Post) => void }) {
+  const id = useId();
+  const [boards, setBoards] = useState<Board[] | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const connected = account.connection.state === "connected";
+
+  useEffect(() => {
+    if (!connected) return;
+    listBoards(account.id)
+      .then(setBoards)
+      .catch((err: unknown) => setError(err instanceof ApiError ? err.message : "Couldn't load boards."));
+  }, [account.id, connected]);
+
+  if (!connected) {
+    return (
+      <div className="field">
+        <span className="field-label">Board</span>
+        <p>{post.pinBoardName ?? <span className="hint">No board chosen.</span>}</p>
+        <p className="hint">Boards load from Pinterest after this account is connected.</p>
+      </div>
+    );
+  }
+  return (
+    <div className="field">
+      <label htmlFor={id} className="field-label">
+        Board
+      </label>
+      <select
+        id={id}
+        value={post.pinBoardId ?? ""}
+        disabled={!editable || dirty || boards === null}
+        onChange={(e) => {
+          setError(null);
+          setPostBoard(post, e.target.value)
+            .then(onSaved)
+            .catch((err: unknown) => setError(err instanceof ApiError ? err.message : "Couldn't set the board."));
+        }}
+      >
+        <option value="" disabled>
+          {boards === null ? "Loading boards…" : "Choose a board"}
+        </option>
+        {(boards ?? []).map((b) => (
+          <option key={b.id} value={b.id}>
+            {b.name}
+            {b.privacy === "SECRET" ? " (secret)" : ""}
+          </option>
+        ))}
+      </select>
+      {dirty && <p className="hint">Save your changes before changing the board.</p>}
+      {error && (
+        <p className="error" role="alert">
+          {error}
+        </p>
+      )}
     </div>
   );
 }

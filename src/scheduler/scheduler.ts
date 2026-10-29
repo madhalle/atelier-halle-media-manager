@@ -12,7 +12,7 @@ export interface Scheduler {
   stop(): Promise<void>;
 }
 
-export function startScheduler(deps: WorkerDeps & { intervalMs: number; autoStart?: boolean }): Scheduler {
+export function startScheduler(deps: WorkerDeps & { intervalMs: number; autoStart?: boolean; onTick?: () => Promise<void> }): Scheduler {
   const { schedule, now, log, intervalMs } = deps;
   schedule.markStarted(now(), intervalMs);
   let current: Promise<void> | null = null;
@@ -30,6 +30,13 @@ export function startScheduler(deps: WorkerDeps & { intervalMs: number; autoStar
       const recovered = schedule.recoverExpiredClaims(started);
       if (recovered > 0) log.warn({ recovered }, "recovered expired publishing leases");
       schedule.markDueOnUnconnected(started);
+      if (deps.onTick) {
+        try {
+          await deps.onTick();
+        } catch (err) {
+          log.error({ err }, "scheduler maintenance failed");
+        }
+      }
       for (let i = 0; i < MAX_PER_TICK && !stopped; i++) {
         if (!(await processNext(deps))) break;
       }

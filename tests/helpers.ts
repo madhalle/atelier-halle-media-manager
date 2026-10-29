@@ -5,6 +5,7 @@ import type { FastifyInstance } from "fastify";
 import { buildApp } from "../src/server/app.ts";
 import { loadConfig, type Config } from "../src/server/config.ts";
 import { createSessionStore, type SessionStore } from "../src/server/sessions.ts";
+import { createMemoryStore } from "../src/storage/credentials.ts";
 import { prepareDataDir } from "../src/storage/data-dir.ts";
 import { openDatabase, type Db } from "../src/storage/db.ts";
 import { migrate } from "../src/storage/migrate.ts";
@@ -32,7 +33,10 @@ export interface TestApp {
   cleanup: () => Promise<void>;
 }
 
-export async function createTestApp(overrides: Partial<Config> = {}): Promise<TestApp> {
+export async function createTestApp(
+  overrides: Partial<Config> = {},
+  extra: { credentials?: ReturnType<typeof createMemoryStore>; endpoints?: import("../src/platforms/http.ts").Endpoints } = {},
+): Promise<TestApp> {
   const dir = tempDir();
   const config = { ...loadConfig({ MEDIA_MANAGER_ENV: "test", MEDIA_MANAGER_DATA_DIR: dir.path }), ...overrides };
   const paths = prepareDataDir(config.dataDir);
@@ -47,6 +51,9 @@ export async function createTestApp(overrides: Partial<Config> = {}): Promise<Te
     sessions,
     version: "0.0.0-test",
     logStream: { write: (line) => void logs.push(line) },
+    credentials: extra.credentials ?? createMemoryStore(),
+    now: () => new Date(clock.t),
+    ...(extra.endpoints ? { endpoints: extra.endpoints } : {}),
   });
   return {
     app,

@@ -279,3 +279,16 @@ dialog:has(.library) { width: min(52rem, calc(100vw - 2rem)); max-height: calc(1
 .service-line p { margin: 0.1rem 0; }
 .notice-bar.simulated { background: color-mix(in srgb, #8a2be2 14%, Canvas); }
 .composer-locked { grid-column: 1 / -1; }
+
+/* Platform setup */
+dialog:has(.setup) { width: min(46rem, calc(100vw - 2rem)); max-height: calc(100vh - 2rem); }
+.setup { display: flex; flex-direction: column; gap: 1rem; }
+.setup-section { border: 1px solid var(--line); border-radius: var(--radius); padding: 0.75rem 1rem; display: flex; flex-direction: column; gap: 0.5rem; }
+.setup-section h3 { margin: 0; }
+.setup-fields { display: grid; grid-template-columns: repeat(auto-fill, minmax(16rem, 1fr)); gap: 0 1rem; }
+.setup-fields .field { margin-bottom: 0.5rem; }
+.setup-fields select { font: inherit; padding: 0.4rem 0.5rem; border: 1px solid var(--line); border-radius: var(--radius); background: var(--bg); color: var(--fg); }
+.setup-actions { display: flex; flex-wrap: wrap; gap: 0.5rem; align-items: center; }
+.redirect-note input { width: 100%; font-family: ui-monospace, monospace; font-size: 0.85rem; padding: 0.35rem 0.5rem; border: 1px solid var(--line); border-radius: var(--radius); background: var(--panel); color: var(--fg); }
+.redirect-note label { font-weight: 600; font-size: 0.9rem; }
+.field select { font: inherit; padding: 0.4rem 0.5rem; border: 1px solid var(--line); border-radius: var(--radius); background: var(--bg); color: var(--fg); }

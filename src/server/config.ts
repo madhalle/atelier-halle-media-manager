@@ -21,7 +21,32 @@ export interface Config {
   schedulerIntervalMs: number;
   /** How far ahead a schedule must be. Shorter leads are allowed only outside production. */
   minScheduleLeadMs: number;
+  /** Loopback fake platform origins for browser tests. Only ever set in the test environment. */
+  testEndpoints: TestEndpoints | null;
 }
+
+export interface TestEndpoints {
+  instagramAuthorize: string;
+  instagramApi: string;
+  instagramGraph: string;
+  pinterestAuthorize: string;
+  pinterestApi: string;
+  pinterestSandboxApi: string;
+  r2: string;
+}
+
+const loopbackUrl = z.string().refine((v) => /^http:\/\/127\.0\.0\.1:\d+$/.test(v), "must be a loopback origin");
+const TestEndpointsSchema = z
+  .object({
+    instagramAuthorize: z.string().url(),
+    instagramApi: loopbackUrl,
+    instagramGraph: loopbackUrl,
+    pinterestAuthorize: z.string().url(),
+    pinterestApi: loopbackUrl,
+    pinterestSandboxApi: loopbackUrl,
+    r2: loopbackUrl,
+  })
+  .strict();
 
 const EnvSchema = z.object({
   MEDIA_MANAGER_ENV: z.enum(["production", "development", "test"]).default("production"),
@@ -32,6 +57,7 @@ const EnvSchema = z.object({
   MEDIA_MANAGER_SCHEDULER_INTERVAL_MS: z.coerce.number().int().min(1000).max(15 * 60_000).default(60_000),
   // Negative values (non-production only) allow scheduling slightly in the past, for fast browser tests.
   MEDIA_MANAGER_MIN_LEAD_SECONDS: z.coerce.number().int().min(-600).max(3600).default(60),
+  MEDIA_MANAGER_TEST_ENDPOINTS: z.string().optional(),
 });
 
 export function productionDataDir(home = homedir()): string {
@@ -80,6 +106,12 @@ export function loadConfig(
     throw new Error("In production, schedules must be at least 60 seconds ahead");
   }
 
+  let testEndpoints: TestEndpoints | null = null;
+  if (parsed.MEDIA_MANAGER_TEST_ENDPOINTS !== undefined) {
+    if (appEnv !== "test") throw new Error("Test endpoints can only be used in the test environment");
+    testEndpoints = TestEndpointsSchema.parse(JSON.parse(parsed.MEDIA_MANAGER_TEST_ENDPOINTS));
+  }
+
   return {
     env: appEnv,
     host: "127.0.0.1",
@@ -90,5 +122,6 @@ export function loadConfig(
     fakePlatforms,
     schedulerIntervalMs: parsed.MEDIA_MANAGER_SCHEDULER_INTERVAL_MS,
     minScheduleLeadMs: parsed.MEDIA_MANAGER_MIN_LEAD_SECONDS * 1000,
+    testEndpoints,
   };
 }

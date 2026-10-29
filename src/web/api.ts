@@ -318,3 +318,37 @@ export function formatInZone(instant: string, timeZone: string): string {
     timeZoneName: "short",
   }).format(new Date(instant));
 }
+
+// ---- Platform setup and connections ----
+
+export interface PlatformSetup {
+  config: {
+    instagram: { clientId: string | null; secretSaved: boolean; redirectHost: "localhost" | "127.0.0.1" };
+    pinterest: { clientId: string | null; secretSaved: boolean; redirectHost: "localhost" | "127.0.0.1"; tier: "trial" | "standard" };
+    r2: { accountId: string | null; bucket: string | null; accessKeyId: string | null; secretSaved: boolean };
+  };
+  redirectUris: { instagram: string; pinterest: string };
+  keychain: { ok: boolean; reason: string | null; kind: "keychain" | "memory" };
+  livePublishing: boolean;
+}
+
+export const getPlatformSetup = () => request<PlatformSetup>("GET", "/api/platforms");
+/** Secrets are sent once and stored in the Keychain; they are never returned. */
+export const updatePlatformSetup = (patch: Record<string, Record<string, string | null>>) =>
+  request<{ config: PlatformSetup["config"] }>("PATCH", "/api/platforms", patch).then((r) => r.config);
+export const clearPlatformSetup = (kind: "instagram" | "pinterest" | "r2") =>
+  request<{ config: PlatformSetup["config"] }>("DELETE", `/api/platforms/${kind}`).then((r) => r.config);
+
+export const startConnect = (accountId: string) =>
+  request<{ authorizeUrl: string }>("POST", `/api/accounts/${accountId}/connect`, {}).then((r) => r.authorizeUrl);
+export const disconnectAccount = (accountId: string) =>
+  request<{ account: Account; credentialRemoved: boolean; followUp: string }>("POST", `/api/accounts/${accountId}/disconnect`, {});
+
+export interface Board {
+  id: string;
+  name: string;
+  privacy: string | null;
+}
+export const listBoards = (accountId: string) => request<{ boards: Board[] }>("GET", `/api/accounts/${accountId}/boards`).then((r) => r.boards);
+export const setPostBoard = (post: Post, boardId: string) =>
+  request<{ post: Post }>("POST", `/api/posts/${post.id}/board`, { revision: post.revision, boardId }).then((r) => r.post);

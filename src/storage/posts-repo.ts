@@ -205,6 +205,24 @@ export function createPostsRepo(db: Db, accounts: AccountsRepo, now: () => Date 
       })();
     },
 
+    /** Sets the Pinterest board; the caller verifies it belongs to the account. */
+    setBoard(id: string, expectedRevision: number, boardId: string, boardName: string): Post {
+      return db.transaction(() => {
+        const post = get(id);
+        if (post.revision !== expectedRevision) {
+          throw new DomainError("stale_revision", "This post changed in another window. Reload and try again.");
+        }
+        assertEditable(post);
+        db.prepare("UPDATE posts SET pin_board_id = ?, pin_board_name = ?, revision = revision + 1, updated_at = ? WHERE id = ?").run(
+          boardId,
+          boardName.slice(0, 200),
+          iso(),
+          id,
+        );
+        return get(id);
+      })();
+    },
+
     /** Deletes an unpublished draft. Photos stay in the library. */
     delete(id: string, expectedRevision: number): void {
       db.transaction(() => {

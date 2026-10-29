@@ -1,8 +1,8 @@
 // Main panel for the selected account: identity, publishing readiness,
 // posts (gallery or composer), and account settings.
 import { useEffect, useId, useRef, useState, type FormEvent } from "react";
-import { ApiError, CONNECTION_LABEL, PLATFORM_LABEL, renameAccount, type Account } from "./api.ts";
-import { useDirty } from "./dialogs.tsx";
+import { ApiError, CONNECTION_LABEL, disconnectAccount, getPlatformSetup, PLATFORM_LABEL, renameAccount, startConnect, type Account } from "./api.ts";
+import { useDirty, useGuard } from "./dialogs.tsx";
 import { PlatformIcon } from "./icons.tsx";
 import { PostsSection } from "./Posts.tsx";
 
@@ -159,17 +159,7 @@ function AccountSettings({
 
       <div className="setting-row">
         <h3>Connection</h3>
-        <p>
-          {a.connection.state === "unconnected"
-            ? `Not connected. Connecting verifies the real ${PLATFORM_LABEL[a.platform]} account and its eligibility.`
-            : CONNECTION_LABEL[a.connection.state]}
-        </p>
-        <button type="button" disabled aria-describedby={`${nameId}-conn`}>
-          Connect {PLATFORM_LABEL[a.platform]} account
-        </button>
-        <p id={`${nameId}-conn`} className="hint">
-          Platform sign-in is not set up in this build yet. You can still use this tab for planning.
-        </p>
+        <ConnectionControls account={a} onUpdated={onUpdated} />
       </div>
 
       <div className="setting-row">
@@ -180,5 +170,92 @@ function AccountSettings({
         </button>
       </div>
     </section>
+  );
+}
+
+function ConnectionControls({ account: a, onUpdated }: { account: Account; onUpdated: (a: Account) => void }) {
+  const { confirm, confirmDiscard } = useGuard();
+  const [configured, setConfigured] = useState<boolean | null>(null);
+  const [busy, setBusy] = useState(false);
+  const [message, setMessage] = useState<{ tone: "info" | "error"; text: string } | null>(null);
+  const label = PLATFORM_LABEL[a.platform];
+  const identity = a.connection.identity;
+  const connected = a.connection.state === "connected";
+
+  useEffect(() => {
+    getPlatformSetup()
+      .then((s) => setConfigured(a.platform === "instagram" ? s.config.instagram.secretSaved && !!s.config.instagram.clientId : s.config.pinterest.secretSaved && !!s.config.pinterest.clientId))
+      .catch(() => setConfigured(false));
+  }, [a.platform]);
+
+  const connect = async () => {
+    if (!(await confirmDiscard())) return;
+    setBusy(true);
+    setMessage(null);
+    try {
+      // Same tab: the platform redirects back to this app to finish.
+      window.location.assign(await startConnect(a.id));
+    } catch (err) {
+      setMessage({ tone: "error", text: err instanceof ApiError ? err.message : "Couldn't start connecting." });
+      setBusy(false);
+    }
+  };
+
+  const disconnect = async () => {
+    const ok = await confirm({
+      title: `Disconnect ${a.displayName}?`,
+      body: (
+        <>
+          <p>Publishing stops and the saved sign-in is deleted from the Keychain. Posts, schedules and history are kept; schedules pause until you reconnect and review them.</p>
+          <p>A post already being sent may still go out; the app checks the result rather than assuming it stopped.</p>
+        </>
+      ),
+      confirmLabel: "Disconnect",
+      destructive: true,
+    });
+    if (!ok) return;
+    setBusy(true);
+    try {
+      const r = await disconnectAccount(a.id);
+      onUpdated(r.account);
+      setMessage({
+        tone: r.credentialRemoved ? "info" : "error",
+        text: `${r.credentialRemoved ? "Disconnected." : "Disconnected, but the saved sign-in couldn't be deleted from the Keychain."} ${r.followUp}`,
+      });
+    } catch (err) {
+      setMessage({ tone: "error", text: err instanceof ApiError ? err.message : "Couldn't disconnect." });
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <>
+      <p>
+        {a.connection.state === "unconnected"
+          ? `Not connected. Connecting signs in to ${label}, verifies the real account and checks it can publish.`
+          : `${CONNECTION_LABEL[a.connection.state]}${identity?.username ? ` as @${identity.username}` : ""}${identity?.accountType ? ` (${identity.accountType.toLowerCase()})` : ""}.`}
+      </p>
+      <div className="setup-actions">
+        {!connected && (
+          <button type="button" className="primary" disabled={busy || configured !== true} onClick={() => void connect()}>
+            {a.connection.state === "unconnected" ? `Connect ${label} account` : `Reconnect ${label}`}
+          </button>
+        )}
+        {a.connection.state !== "unconnected" && (
+          <button type="button" className="danger" disabled={busy} onClick={() => void disconnect()}>
+            Disconnect…
+          </button>
+        )}
+      </div>
+      {configured === false && !connected && (
+        <p className="hint">Set up the {label} developer app first: Settings › Platform setup.</p>
+      )}
+      {message && (
+        <p className={message.tone === "error" ? "error" : "hint"} role={message.tone === "error" ? "alert" : "status"}>
+          {message.text}
+        </p>
+      )}
+    </>
   );
 }

@@ -2,9 +2,11 @@
 import { readFileSync } from "node:fs";
 import { join, resolve } from "node:path";
 import { createFakePlatform } from "../platforms/fake.ts";
-import { NO_ADAPTERS, type AdapterRegistry } from "../platforms/types.ts";
+import { createPlatformServices } from "../platforms/services.ts";
+import type { AdapterRegistry } from "../platforms/types.ts";
 import { startScheduler } from "../scheduler/scheduler.ts";
 import { createAccountsRepo } from "../storage/accounts-repo.ts";
+import { createKeychainStore, createMemoryStore, type CredentialStore } from "../storage/credentials.ts";
 import { acquireInstanceLock } from "../storage/instance-lock.ts";
 import { createMediaStore } from "../storage/media-store.ts";
 import { createPostsRepo } from "../storage/posts-repo.ts";
@@ -33,7 +35,42 @@ async function main(): Promise<void> {
   const sessions = createSessionStore();
   const publishLaunchLink = () => writeLaunchFile(paths.launchFile, launchUrl(config.port, sessions.mintLaunchToken()));
 
-  const app = await buildApp({ config, db, sessions, version: pkg.version, onLaunchTokenUsed: publishLaunchLink });
+  // Tests never touch the user's Keychain; development uses its own Keychain service name.
+  const credentials: CredentialStore =
+    config.env === "test"
+      ? createMemoryStore()
+      : createKeychainStore(config.env === "production" ? "com.atelierhalle.media-manager" : "com.atelierhalle.media-manager.dev");
+  let keychain = { ok: true, reason: null as string | null, kind: credentials.kind };
+  const checkKeychain = async () => {
+    const r = await credentials.probe();
+    keychain = { ok: r.ok, reason: r.ok ? null : r.reason, kind: credentials.kind };
+  };
+  await checkKeychain();
+
+  const now = () => new Date();
+  const accounts = createAccountsRepo(db);
+  const posts = createPostsRepo(db, accounts);
+  const te = config.testEndpoints;
+  const services = createPlatformServices({
+    db,
+    accounts,
+    credentials,
+    port: config.port,
+    now,
+    ...(te ? { endpoints: { ...te, r2: () => te.r2 }, allowInsecureLoopback: true } : {}),
+  });
+
+  const app = await buildApp({
+    config,
+    db,
+    sessions,
+    version: pkg.version,
+    onLaunchTokenUsed: publishLaunchLink,
+    credentials,
+    services,
+    keychainStatus: () => keychain,
+  });
+  if (!keychain.ok) app.log.warn("macOS Keychain unavailable; connected accounts can't publish until it's accessible");
 
   let shuttingDown = false;
   const shutdown = async (signal: string) => {
@@ -53,9 +90,8 @@ async function main(): Promise<void> {
 
   // The backend owns scheduling; it keeps running with no browser open.
   const fakes = { instagram: createFakePlatform("instagram"), pinterest: createFakePlatform("pinterest") };
-  const adapters: AdapterRegistry = config.fakePlatforms ? (p) => fakes[p] : NO_ADAPTERS;
-  const accounts = createAccountsRepo(db);
-  const posts = createPostsRepo(db, accounts);
+  const adapters: AdapterRegistry = config.fakePlatforms ? (p) => fakes[p] : services.registry(config.livePublishing);
+  let lastRenewal = 0;
   const scheduler = startScheduler({
     accounts,
     posts,
@@ -65,6 +101,18 @@ async function main(): Promise<void> {
     now: () => new Date(),
     log: app.log,
     intervalMs: config.schedulerIntervalMs,
+    // Hourly: re-check the Keychain and renew platform tokens before they expire.
+    onTick: async () => {
+      if (Date.now() - lastRenewal < 60 * 60_000) return;
+      lastRenewal = Date.now();
+      await checkKeychain();
+      if (!keychain.ok || config.fakePlatforms) return;
+      for (const id of await services.tokens.renewDue(accounts.list())) {
+        const a = accounts.get(id);
+        createScheduleRepo(db, posts).markAccountNeedsReconnect(a, now());
+        app.log.warn({ accountId: id }, "platform connection expired; reconnect needed");
+      }
+    },
   });
   if (config.fakePlatforms) app.log.warn("SIMULATED platforms are enabled: nothing is sent to Instagram or Pinterest");
   publishLaunchLink();

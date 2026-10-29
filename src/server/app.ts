@@ -6,7 +6,10 @@ import fastifyStatic from "@fastify/static";
 import Fastify, { type FastifyInstance, type FastifyRequest } from "fastify";
 import { z } from "zod";
 import { DomainError, type DomainErrorCode } from "../domain/errors.ts";
+import { createPlatformServices, type PlatformServices } from "../platforms/services.ts";
+import type { Endpoints } from "../platforms/http.ts";
 import { createAccountsRepo } from "../storage/accounts-repo.ts";
+import { CredentialUnavailable, type CredentialStore } from "../storage/credentials.ts";
 import { dataPaths } from "../storage/data-dir.ts";
 import { createMediaStore } from "../storage/media-store.ts";
 import { createPostsRepo } from "../storage/posts-repo.ts";
@@ -14,6 +17,7 @@ import { createScheduleRepo } from "../storage/schedule-repo.ts";
 import type { Db } from "../storage/db.ts";
 import type { Config } from "./config.ts";
 import { registerAccountRoutes } from "./routes/accounts.ts";
+import { registerConnectionRoutes, registerOAuthCallbackPage } from "./routes/connections.ts";
 import { registerMediaRoutes } from "./routes/media.ts";
 import { registerPostRoutes } from "./routes/posts.ts";
 import { registerScheduleRoutes } from "./routes/schedule.ts";
@@ -32,6 +36,13 @@ export interface AppDeps {
   onLaunchTokenUsed?: () => void;
   logStream?: { write(line: string): void };
   now?: () => Date;
+  /** Keychain in production/development; an in-memory store in tests. */
+  credentials: CredentialStore;
+  /** Shared with the scheduler when provided. */
+  services?: PlatformServices;
+  endpoints?: Endpoints;
+  fetchImpl?: typeof fetch;
+  keychainStatus?: () => { ok: boolean; reason: string | null; kind: "keychain" | "memory" };
 }
 
 const DOMAIN_STATUS: Record<DomainErrorCode, number> = {
@@ -76,6 +87,9 @@ export async function buildApp(deps: AppDeps): Promise<FastifyInstance> {
   app.setErrorHandler(async (err, req, reply) => {
     if (err instanceof DomainError) {
       return reply.code(DOMAIN_STATUS[err.code]).send({ error: err.code, message: err.message });
+    }
+    if (err instanceof CredentialUnavailable) {
+      return reply.code(503).send({ error: "keychain_unavailable", message: err.message });
     }
     if (err instanceof z.ZodError) {
       return reply.code(400).send({ error: "validation", message: "The request was not valid.", issues: err.issues.map((i) => ({ path: i.path.join("."), message: i.message })) });
@@ -127,6 +141,23 @@ export async function buildApp(deps: AppDeps): Promise<FastifyInstance> {
     return reply.code(303).header("location", "/").send();
   });
 
+  const now = deps.now ?? (() => new Date());
+  const accounts = createAccountsRepo(db, deps.now);
+  const posts = createPostsRepo(db, accounts, deps.now);
+  const services =
+    deps.services ??
+    createPlatformServices({
+      db,
+      accounts,
+      credentials: deps.credentials,
+      port: config.port,
+      now,
+      ...(deps.endpoints ? { endpoints: deps.endpoints } : {}),
+      ...(deps.fetchImpl ? { fetchImpl: deps.fetchImpl } : {}),
+      allowInsecureLoopback: config.env === "test",
+    });
+  registerOAuthCallbackPage(app);
+
   await app.register(async (api) => {
     api.addHook("preHandler", async (req, reply) => {
       if (!checkSameOrigin(req, reply, origins)) return reply;
@@ -140,8 +171,6 @@ export async function buildApp(deps: AppDeps): Promise<FastifyInstance> {
       }
     });
 
-    const accounts = createAccountsRepo(db, deps.now);
-    const posts = createPostsRepo(db, accounts, deps.now);
     registerAccountRoutes(api, accounts);
     await registerMediaRoutes(api, media);
     const { view } = registerPostRoutes(api, { accounts, posts, media });
@@ -155,6 +184,16 @@ export async function buildApp(deps: AppDeps): Promise<FastifyInstance> {
       minLeadMs: config.minScheduleLeadMs,
       simulated: config.fakePlatforms,
       livePublishing: config.livePublishing,
+    });
+    registerConnectionRoutes(api, {
+      accounts,
+      posts,
+      config: services.config,
+      connections: services.connections,
+      pinterest: services.pinterest,
+      keychainStatus: deps.keychainStatus ?? (() => ({ ok: true, reason: null, kind: deps.credentials.kind })),
+      livePublishing: config.livePublishing,
+      view: (id) => view(posts.get(id)),
     });
 
     api.get("/session", async (req) => ({ authenticated: true, csrfToken: req.session!.csrfToken }));

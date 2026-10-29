@@ -107,7 +107,7 @@ export function connectedAccount(env: Env, platform: Platform = "instagram", nam
   env.accounts.markConnected(
     a.id,
     { providerAccountId: `pid-${a.id}`, username: "atelier", displayName: null, avatarUrl: null, accountType: "BUSINESS", verifiedAt: env.clock.now().toISOString() },
-    `kc:${a.id}`,
+    `cred:kc-${a.id}`,
   );
   return env.accounts.acknowledgeScheduleReview(a.id);
 }

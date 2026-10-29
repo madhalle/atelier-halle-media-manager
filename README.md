@@ -3,7 +3,7 @@
 A private, single-user, local-first tool for preparing and scheduling photo
 posts to Instagram and Pinterest from macOS, without opening the social apps.
 
-**Status: milestone 5 (durable scheduling against simulated platforms).**
+**Status: milestone 6 (sign-in, Keychain, real adapters; not yet verified live).**
 
 | Area | Status |
 |---|---|
@@ -21,13 +21,17 @@ posts to Instagram and Pinterest from macOS, without opening the social apps.
 | Scheduling with explicit time zones and daylight-saving handling | ✅ Works |
 | Durable scheduler: leases, retries, missed-schedule policy, reconciliation, cancel | ✅ Works (tested against a simulated platform) |
 | Publishing history, needs-attention handling, scheduler health, settings | ✅ Works |
-| Connect / disconnect a real platform account | ⏳ Not built yet (milestone 6) |
-| Instagram / Pinterest publishing | ❌ Not built and not tested live; see [capabilities](docs/platform-capabilities.md) |
+| Platform setup (app IDs; secrets in the macOS Keychain) | ✅ Works |
+| Connect / disconnect via OAuth with identity and eligibility checks | ✅ Works against test fakes; ⚠️ not yet tried with real Meta/Pinterest apps |
+| Token storage and renewal | ✅ Works against test fakes; Keychain verified on this Mac |
+| Pinterest publishing (direct upload, sandbox/standard) | ⚠️ Built and tested against fakes; no live Pin yet |
+| Instagram publishing via R2 media delivery | ⚠️ Built and tested against fakes; no live post yet |
 
 More documentation:
 - [Architecture decision](docs/adr/0001-architecture.md)
 - [Security model](docs/security.md)
 - [Scheduling and publishing](docs/scheduling.md)
+- [Setting up real publishing](docs/setup-guide.md)
 
 ## Requirements
 
@@ -55,6 +59,8 @@ npm test            # Vitest; live publishing is always disabled in tests
 npm run test:e2e    # build, then Playwright browser tests against throwaway data
 npm run check       # typecheck + lint + unit tests
 npm run audit:deps  # vulnerabilities, registry signatures/provenance, install scripts
+npm run check:secrets # scan tracked files for credential-shaped strings
+node scripts/keychain-probe.ts  # confirm the Keychain works for this app
 ```
 
 The server runs TypeScript directly through Node's built-in type stripping, so

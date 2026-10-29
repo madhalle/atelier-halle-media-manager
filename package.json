@@ -18,9 +18,10 @@
     "lint": "oxlint --deny-warnings src tests scripts",
     "test": "vitest run",
     "test:watch": "vitest",
-    "check": "npm run typecheck && npm run lint && npm test",
+    "check": "npm run typecheck && npm run lint && npm run check:secrets && npm test",
     "test:e2e": "npm run build && playwright test",
-    "audit:deps": "npm audit && npm audit signatures && npm install-scripts ls"
+    "audit:deps": "npm audit && npm audit signatures && npm install-scripts ls",
+    "check:secrets": "node scripts/check-secrets.ts"
   },
   "dependencies": {
     "@fastify/cookie": "11.1.5",

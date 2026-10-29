@@ -4,6 +4,7 @@ import { mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { test as base, expect, type Page } from "@playwright/test";
+import { startFakeProviders, type FakeProviders } from "../fake-providers.ts";
 
 const ROOT = resolve(import.meta.dirname, "..", "..");
 
@@ -30,7 +31,7 @@ async function waitForHealth(origin: string): Promise<void> {
   throw new Error("server did not become healthy");
 }
 
-export function createTestServer(port: number): TestServer {
+export function createTestServer(port: number, providers: FakeProviders): TestServer {
   const dataDir = mkdtempSync(join(tmpdir(), "mm-e2e-"));
   const origin = `http://127.0.0.1:${port}`;
   let child: ChildProcess | null = null;
@@ -59,6 +60,9 @@ export function createTestServer(port: number): TestServer {
           MEDIA_MANAGER_FAKE_PLATFORMS: "enabled",
           MEDIA_MANAGER_SCHEDULER_INTERVAL_MS: "1000",
           MEDIA_MANAGER_MIN_LEAD_SECONDS: "-300",
+          // Real platform calls go to loopback fakes; the browser's trips to the
+          // platforms' sign-in pages are intercepted by the tests.
+          MEDIA_MANAGER_TEST_ENDPOINTS: JSON.stringify({ ...providers.endpoints, r2: providers.endpoints.r2("x") }),
         },
         stdio: ["ignore", "pipe", "pipe"],
       });
@@ -89,7 +93,13 @@ export function createTestServer(port: number): TestServer {
   };
 }
 
-export const test = base.extend<{ server: TestServer }>({
+export const test = base.extend<{ server: TestServer; providers: FakeProviders }>({
+  // oxlint-disable-next-line no-empty-pattern
+  providers: async ({}, use) => {
+    const p = await startFakeProviders();
+    await use(p);
+    await p.close();
+  },
   // Every test also fails on browser console errors, including CSP violations.
   page: async ({ page }, use) => {
     const problems: string[] = [];
@@ -103,10 +113,8 @@ export const test = base.extend<{ server: TestServer }>({
     await use(page);
     expect(problems).toEqual([]);
   },
-  // Playwright requires a destructuring pattern for fixture dependencies.
-  // oxlint-disable-next-line no-empty-pattern
-  server: async ({}, use, testInfo) => {
-    const server = createTestServer(4900 + testInfo.workerIndex);
+  server: async ({ providers }, use, testInfo) => {
+    const server = createTestServer(4900 + testInfo.workerIndex, providers);
     await server.start();
     await use(server);
     await server.stop();

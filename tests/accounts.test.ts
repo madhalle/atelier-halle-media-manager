@@ -220,9 +220,11 @@ describe("accounts API", () => {
 
   it("has no route that can mark an account connected without a platform check", async () => {
     const ig = (await call("POST", "/api/accounts", { platform: "instagram", displayName: "IG" })).json().account;
-    for (const url of [`/api/accounts/${ig.id}/connect`, `/api/accounts/${ig.id}/connected`]) {
-      expect((await call("POST", url, { providerAccountId: "1" })).statusCode).toBe(404);
-    }
+    expect((await call("POST", `/api/accounts/${ig.id}/connected`, { providerAccountId: "1" })).statusCode).toBe(404);
+    // /connect only starts a platform sign-in (here refused: no developer app configured).
+    const start = await call("POST", `/api/accounts/${ig.id}/connect`, { providerAccountId: "1" });
+    expect(start.statusCode).toBe(409);
+    expect((await call("GET", `/api/accounts/${ig.id}`)).json().account.connection.state).toBe("unconnected");
     const patched = await call("PATCH", `/api/accounts/${ig.id}`, {
       displayName: "IG",
       revision: ig.revision,

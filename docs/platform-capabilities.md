@@ -149,6 +149,31 @@ Until step 4 is authorized, Instagram accounts can draft, preview, and schedule.
 Due posts move to "needs attention: media delivery not configured" and are
 never reported as published.
 
+## Implementation notes (milestone 6): assumptions to confirm live
+
+These are built and tested against loopback fakes that use the documented
+response shapes. They haven't been checked against the real APIs.
+
+- **Instagram account ID:** the app publishes as `user_id` from
+  `GET /v26.0/me` (falling back to `id`). The docs call the publishing ID the
+  "IG professional account ID". Confirm on the first connection.
+- **Instagram sign-in:** the authorize URL includes `force_reauth=true`, so
+  the account picker always appears.
+- **Instagram tokens:** access tokens are sent as the documented
+  `access_token` query or form parameter, never logged. Instagram accepts
+  `Authorization: Bearer` headers; that hasn't been tested.
+- **Instagram quota:** `content_publishing_limit` is read before each publish
+  instead of assuming 50 or 100.
+- **Pinterest Trial:** Pins are created on `api-sandbox.pinterest.com`, while
+  OAuth and boards use `api.pinterest.com`. Whether a Trial access token works
+  against the sandbox endpoint as-is needs a live test.
+- **Pinterest reconciliation:** looks for a Pin on the board with the same
+  title and description, created after the attempt started. It reports
+  "not published" only after 5 minutes without finding one.
+- **Instagram reconciliation:** uses the persisted container's `status_code`.
+  `PUBLISHED` means it went out. `FINISHED` means it didn't, but only once 5
+  minutes have passed.
+
 ## Live verification checklist (not started)
 
 Each item needs explicit user authorization where it publishes.

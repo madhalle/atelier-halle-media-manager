@@ -133,6 +133,23 @@ describe("configuration", () => {
     expect(() => loadConfig({ MEDIA_MANAGER_SCHEDULER_INTERVAL_MS: "10" }, "/repo")).toThrow();
   });
 
+  it("only accepts loopback test endpoints, and only in the test environment", () => {
+    const te = JSON.stringify({
+      instagramAuthorize: "https://www.instagram.com/oauth/authorize",
+      instagramApi: "http://127.0.0.1:5001",
+      instagramGraph: "http://127.0.0.1:5002",
+      pinterestAuthorize: "https://www.pinterest.com/oauth/",
+      pinterestApi: "http://127.0.0.1:5003",
+      pinterestSandboxApi: "http://127.0.0.1:5004",
+      r2: "http://127.0.0.1:5005",
+    });
+    expect(() => loadConfig({ MEDIA_MANAGER_TEST_ENDPOINTS: te }, "/repo")).toThrow(/only be used in the test/);
+    expect(() =>
+      loadConfig({ MEDIA_MANAGER_ENV: "test", MEDIA_MANAGER_DATA_DIR: "/tmp/x", MEDIA_MANAGER_TEST_ENDPOINTS: te.replace("127.0.0.1:5002", "evil.example") }),
+    ).toThrow();
+    expect(loadConfig({ MEDIA_MANAGER_ENV: "test", MEDIA_MANAGER_DATA_DIR: "/tmp/x", MEDIA_MANAGER_TEST_ENDPOINTS: te }).testEndpoints?.instagramGraph).toBe("http://127.0.0.1:5002");
+  });
+
   it("rejects relative data directories and invalid ports", () => {
     expect(() => loadConfig({ MEDIA_MANAGER_DATA_DIR: "data" })).toThrow();
     expect(() => loadConfig({ MEDIA_MANAGER_PORT: "80" })).toThrow();
