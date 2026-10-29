@@ -21,7 +21,8 @@ in the plan still apply. The machine had no Node.js and no Homebrew.
 |---|---|---|
 | Runtime | Node.js **26.13.0 LTS** ("Lithium", LTS since 2026-10-28), darwin-arm64 | Pinned in `.node-version` and `engines`. Installed per user from the checksum-verified nodejs.org tarball into `~/.local/share/nodejs/current`. No root needed. |
 | Package manager | **npm 11** with committed `package-lock.json` | Node 26 no longer ships Corepack, so npm avoids extra tooling. Exact versions are pinned. npm `allowScripts` denies dependency install scripts by default. |
-| Language | TypeScript 7 (`strict`, `noUncheckedIndexedAccess`, `exactOptionalPropertyTypes`) | |
+| Language | TypeScript 7 (`strict`, `noUncheckedIndexedAccess`, `exactOptionalPropertyTypes`, `erasableSyntaxOnly`) | The server runs as `.ts` through Node 26's built-in type stripping, so it has no server build step. `tsc` only type-checks. |
+| Lint | oxlint | `typescript-eslint` does not support TypeScript 7 yet (its peer range is `<6.1`). oxlint has no TypeScript peer dependency. |
 | HTTP | Fastify 5 | One process serves the built UI and the API from one loopback origin. |
 | Validation | Zod 4 | Validates requests, config, and provider responses at runtime. |
 | Database | SQLite via **better-sqlite3 13** | Ships darwin-arm64 prebuilds, so it doesn't need `node-gyp` or Xcode. It has a synchronous transaction API and online `backup()`. `node:sqlite` was rejected for now because on Node 26 it is still "1.2 Release candidate" and its API is still changing (`DatabaseSync` → `Database`). |
