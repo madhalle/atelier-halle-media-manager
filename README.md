@@ -3,7 +3,7 @@
 A private, single-user, local-first tool for preparing and scheduling photo
 posts to Instagram and Pinterest from macOS, without opening the social apps.
 
-**Status: milestone 4 (photos, composer, copies).**
+**Status: milestone 5 (durable scheduling against simulated platforms).**
 
 | Area | Status |
 |---|---|
@@ -18,13 +18,16 @@ posts to Instagram and Pinterest from macOS, without opening the social apps.
 | Single-photo drafts, platform-specific composer, crop with exact preview, validation | ✅ Works |
 | Independent copies across accounts; deleting unpublished drafts | ✅ Works |
 | Pinterest board selection | ⏳ Needs a connected account (milestone 6) |
-| Scheduling, publishing history | ⏳ Not built yet (milestone 5) |
+| Scheduling with explicit time zones and daylight-saving handling | ✅ Works |
+| Durable scheduler: leases, retries, missed-schedule policy, reconciliation, cancel | ✅ Works (tested against a simulated platform) |
+| Publishing history, needs-attention handling, scheduler health, settings | ✅ Works |
 | Connect / disconnect a real platform account | ⏳ Not built yet (milestone 6) |
 | Instagram / Pinterest publishing | ❌ Not built and not tested live; see [capabilities](docs/platform-capabilities.md) |
 
 More documentation:
 - [Architecture decision](docs/adr/0001-architecture.md)
 - [Security model](docs/security.md)
+- [Scheduling and publishing](docs/scheduling.md)
 
 ## Requirements
 
@@ -66,6 +69,17 @@ npm run dev:web     # rebuild the UI on change
 npm run dev         # restart the server on change (port 4871, data in .data/development)
 npm run open -- --env development
 ```
+
+To try the publishing flow without touching real platforms, start the
+development server with simulated platforms, then connect an account to a
+simulated identity:
+
+```sh
+MEDIA_MANAGER_FAKE_PLATFORMS=enabled npm run dev
+node scripts/dev-fake-connect.ts --env development --account <account-id>
+```
+
+Simulated mode is refused in production and labelled everywhere in the UI.
 
 Development and test data never use the real data directory. The config
 refuses it.

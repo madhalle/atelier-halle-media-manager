@@ -255,3 +255,27 @@ dialog:has(.library) { width: min(52rem, calc(100vw - 2rem)); max-height: calc(1
 @media (max-width: 960px) {
   .composer-grid { grid-template-columns: 1fr; }
 }
+
+/* Scheduling */
+.schedule-panel { margin-top: 1.5rem; border-top: 1px solid var(--line); padding-top: 1rem; display: flex; flex-direction: column; gap: 0.6rem; align-items: flex-start; }
+.schedule-form { display: flex; flex-direction: column; gap: 0.5rem; align-items: flex-start; }
+.schedule-fields { display: grid; grid-template-columns: max-content minmax(0, 16rem); gap: 0.4rem 0.75rem; align-items: center; }
+.schedule-fields input, .schedule-fields select, dialog select, dialog input[type="number"] {
+  font: inherit; padding: 0.35rem 0.5rem; border: 1px solid var(--line); border-radius: var(--radius); background: var(--bg); color: var(--fg);
+}
+.state { margin: 0; }
+.state.attention { color: var(--danger); }
+.state.published { color: #1d7a3a; }
+.state.inflight { color: var(--accent); }
+.resolve, .conflict { display: flex; flex-wrap: wrap; gap: 0.5rem; align-items: center; }
+.resolve p, .conflict p { flex-basis: 100%; }
+.warnings { margin: 0; padding-left: 1.2rem; color: #9a5b00; }
+.history { width: 100%; }
+.history ol { padding-left: 1.2rem; margin: 0.4rem 0; }
+.when { font-size: 0.85rem; font-weight: 600; }
+.attention-text { font-size: 0.85rem; color: var(--danger); }
+.health-ok { color: #1d7a3a; }
+.health-bad { color: var(--danger); font-weight: 600; }
+.service-line p { margin: 0.1rem 0; }
+.notice-bar.simulated { background: color-mix(in srgb, #8a2be2 14%, Canvas); }
+.composer-locked { grid-column: 1 / -1; }

@@ -1,5 +1,5 @@
 // Starts the real server process against an isolated temporary data directory.
-import { spawn, type ChildProcess } from "node:child_process";
+import { execFileSync, spawn, type ChildProcess } from "node:child_process";
 import { mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
@@ -10,6 +10,8 @@ const ROOT = resolve(import.meta.dirname, "..", "..");
 export interface TestServer {
   origin: string;
   dataDir: string;
+  /** Connects an account to a SIMULATED identity via the dev-only script. */
+  fakeConnect: (accountId: string) => void;
   start: () => Promise<void>;
   stop: () => Promise<void>;
   signIn: (page: Page) => Promise<void>;
@@ -37,6 +39,12 @@ export function createTestServer(port: number): TestServer {
   return {
     origin,
     dataDir,
+    fakeConnect(accountId) {
+      execFileSync(process.execPath, ["scripts/dev-fake-connect.ts", "--env", "test", "--account", accountId], {
+        cwd: ROOT,
+        env: { PATH: process.env.PATH ?? "", HOME: process.env.HOME ?? "", MEDIA_MANAGER_DATA_DIR: dataDir },
+      });
+    },
     async start() {
       child = spawn(process.execPath, ["src/server/main.ts"], {
         cwd: ROOT,
@@ -46,6 +54,11 @@ export function createTestServer(port: number): TestServer {
           MEDIA_MANAGER_ENV: "test",
           MEDIA_MANAGER_DATA_DIR: dataDir,
           MEDIA_MANAGER_PORT: String(port),
+          // Simulated platforms, a fast scheduler and no minimum lead time, so
+          // publishing flows complete in seconds. Never possible in production.
+          MEDIA_MANAGER_FAKE_PLATFORMS: "enabled",
+          MEDIA_MANAGER_SCHEDULER_INTERVAL_MS: "1000",
+          MEDIA_MANAGER_MIN_LEAD_SECONDS: "-300",
         },
         stdio: ["ignore", "pipe", "pipe"],
       });
@@ -82,8 +95,10 @@ export const test = base.extend<{ server: TestServer }>({
     const problems: string[] = [];
     page.on("pageerror", (err) => problems.push(`pageerror: ${err.message}`));
     page.on("console", (msg) => {
-      // The signed-out check intentionally receives a 401.
-      if (msg.type() === "error" && !msg.text().includes("401")) problems.push(`console: ${msg.text()}`);
+      // Expected API answers (401 when signed out, 409 for daylight-saving conflicts) are logged by
+      // Chrome as resource errors; anything else, including CSP violations, fails the test.
+      const expected = /Failed to load resource: the server responded with a status of (401|409)/.test(msg.text());
+      if (msg.type() === "error" && !expected) problems.push(`console: ${msg.text()}`);
     });
     await use(page);
     expect(problems).toEqual([]);
@@ -102,8 +117,9 @@ export const test = base.extend<{ server: TestServer }>({
 export { expect };
 
 /** Creates accounts through the real API using the page's session. */
-export async function createAccountsViaApi(page: Page, accounts: { platform: "instagram" | "pinterest"; displayName: string }[]) {
-  await page.evaluate(async (list) => {
+export async function createAccountsViaApi(page: Page, accounts: { platform: "instagram" | "pinterest"; displayName: string }[]): Promise<string[]> {
+  return page.evaluate(async (list) => {
+    const ids: string[] = [];
     const { csrfToken } = (await (await fetch("/api/session")).json()) as { csrfToken: string };
     for (const a of list) {
       const res = await fetch("/api/accounts", {
@@ -112,7 +128,9 @@ export async function createAccountsViaApi(page: Page, accounts: { platform: "in
         body: JSON.stringify(a),
       });
       if (!res.ok) throw new Error(`create failed: ${res.status}`);
+      ids.push(((await res.json()) as { account: { id: string } }).account.id);
     }
+    return ids;
   }, accounts);
 }
 

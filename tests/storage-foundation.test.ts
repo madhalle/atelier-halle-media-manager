@@ -123,6 +123,16 @@ describe("configuration", () => {
     ).toThrow(/production/);
   });
 
+  it("never allows simulated platforms or short schedule lead times in production", () => {
+    expect(() => loadConfig({ MEDIA_MANAGER_FAKE_PLATFORMS: "enabled" }, "/repo")).toThrow(/never be enabled in production/);
+    expect(() => loadConfig({ MEDIA_MANAGER_MIN_LEAD_SECONDS: "0" }, "/repo")).toThrow(/at least 60 seconds/);
+    expect(loadConfig({}, "/repo")).toMatchObject({ fakePlatforms: false, schedulerIntervalMs: 60_000, minScheduleLeadMs: 60_000 });
+    expect(
+      loadConfig({ MEDIA_MANAGER_ENV: "development", MEDIA_MANAGER_FAKE_PLATFORMS: "enabled", MEDIA_MANAGER_MIN_LEAD_SECONDS: "-60" }, "/repo"),
+    ).toMatchObject({ fakePlatforms: true, minScheduleLeadMs: -60_000 });
+    expect(() => loadConfig({ MEDIA_MANAGER_SCHEDULER_INTERVAL_MS: "10" }, "/repo")).toThrow();
+  });
+
   it("rejects relative data directories and invalid ports", () => {
     expect(() => loadConfig({ MEDIA_MANAGER_DATA_DIR: "data" })).toThrow();
     expect(() => loadConfig({ MEDIA_MANAGER_PORT: "80" })).toThrow();

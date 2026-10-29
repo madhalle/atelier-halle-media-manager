@@ -10,11 +10,13 @@ import { createAccountsRepo } from "../storage/accounts-repo.ts";
 import { dataPaths } from "../storage/data-dir.ts";
 import { createMediaStore } from "../storage/media-store.ts";
 import { createPostsRepo } from "../storage/posts-repo.ts";
+import { createScheduleRepo } from "../storage/schedule-repo.ts";
 import type { Db } from "../storage/db.ts";
 import type { Config } from "./config.ts";
 import { registerAccountRoutes } from "./routes/accounts.ts";
 import { registerMediaRoutes } from "./routes/media.ts";
 import { registerPostRoutes } from "./routes/posts.ts";
+import { registerScheduleRoutes } from "./routes/schedule.ts";
 import { allowedHosts, allowedOrigins, checkSameOrigin, isUnsafeMethod, redactUrl, SECURITY_HEADERS } from "./security.ts";
 import { safeEqual, SESSION_ABSOLUTE_TTL_MS, type Session, type SessionStore } from "./sessions.ts";
 
@@ -142,7 +144,18 @@ export async function buildApp(deps: AppDeps): Promise<FastifyInstance> {
     const posts = createPostsRepo(db, accounts, deps.now);
     registerAccountRoutes(api, accounts);
     await registerMediaRoutes(api, media);
-    registerPostRoutes(api, { accounts, posts, media });
+    const { view } = registerPostRoutes(api, { accounts, posts, media });
+    registerScheduleRoutes(api, {
+      accounts,
+      posts,
+      media,
+      schedule: createScheduleRepo(db, posts),
+      view: (id) => view(posts.get(id)),
+      now: deps.now ?? (() => new Date()),
+      minLeadMs: config.minScheduleLeadMs,
+      simulated: config.fakePlatforms,
+      livePublishing: config.livePublishing,
+    });
 
     api.get("/session", async (req) => ({ authenticated: true, csrfToken: req.session!.csrfToken }));
 

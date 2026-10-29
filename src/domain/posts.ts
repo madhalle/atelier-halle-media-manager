@@ -15,8 +15,34 @@ export const POST_STATUSES = [
 ] as const;
 export type PostStatus = (typeof POST_STATUSES)[number];
 
-/** Statuses whose content may be edited or deleted by the user. */
-export const EDITABLE_STATUSES: ReadonlySet<PostStatus> = new Set(["draft", "canceled"]);
+/** Statuses whose content may be edited. In-flight and published content is locked. */
+export const EDITABLE_STATUSES: ReadonlySet<PostStatus> = new Set(["draft", "canceled", "scheduled", "retry_waiting", "needs_attention"]);
+
+export type AttentionKind =
+  | "not_connected"
+  | "not_configured"
+  | "missed"
+  | "validation"
+  | "permanent"
+  | "auth"
+  | "retries_exhausted"
+  | "ambiguous";
+
+export interface PostSchedule {
+  scheduledAt: string | null;
+  timezone: string | null;
+  localTime: string | null;
+  attemptCount: number;
+  nextAttemptAt: string | null;
+  cancelRequested: boolean;
+  commitStartedAt: string | null;
+  remotePostId: string | null;
+  remotePermalink: string | null;
+  publishedAt: string | null;
+  publishedSimulated: boolean;
+  attentionKind: AttentionKind | null;
+  attentionMessage: string | null;
+}
 
 export const CROP_ASPECTS = ["original", "1:1", "4:5", "1.91:1", "2:3"] as const;
 export type CropAspect = (typeof CROP_ASPECTS)[number];
@@ -39,7 +65,7 @@ export interface PostMedia {
   focusY: number;
 }
 
-export interface Post extends PostFields {
+export interface Post extends PostFields, PostSchedule {
   id: string;
   accountId: string;
   status: PostStatus;
@@ -207,7 +233,15 @@ export function fieldsForCopy(source: Post, sourcePlatform: Platform, targetPlat
 }
 
 export function assertEditable(post: Post): void {
-  if (!EDITABLE_STATUSES.has(post.status)) {
-    throw new DomainError("invalid_state", "Only drafts can be edited. Cancel the schedule first.");
+  if (post.status === "preparing" || post.status === "publishing") {
+    throw new DomainError("invalid_state", "This post is being published right now, so it can't be edited.");
   }
+  if (post.status === "published") throw new DomainError("invalid_state", "Published posts can't be edited here.");
+  if (post.commitStartedAt !== null) {
+    throw new DomainError("invalid_state", "This post was sent to the platform and the result is still being checked.");
+  }
+  if (post.attentionKind === "ambiguous") {
+    throw new DomainError("invalid_state", "First confirm whether this post was published.");
+  }
+  if (!EDITABLE_STATUSES.has(post.status)) throw new DomainError("invalid_state", "This post can't be edited now.");
 }

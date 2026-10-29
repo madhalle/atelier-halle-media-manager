@@ -16,6 +16,11 @@ export interface Config {
   webRoot: string;
   /** Live platform calls are only possible in production with this enabled. */
   livePublishing: boolean;
+  /** Simulated platforms for development and tests. Never allowed in production. */
+  fakePlatforms: boolean;
+  schedulerIntervalMs: number;
+  /** How far ahead a schedule must be. Shorter leads are allowed only outside production. */
+  minScheduleLeadMs: number;
 }
 
 const EnvSchema = z.object({
@@ -23,6 +28,10 @@ const EnvSchema = z.object({
   MEDIA_MANAGER_PORT: z.coerce.number().int().min(1024).max(65535).optional(),
   MEDIA_MANAGER_DATA_DIR: z.string().min(1).optional(),
   MEDIA_MANAGER_LIVE_PUBLISHING: z.enum(["enabled", "disabled"]).default("disabled"),
+  MEDIA_MANAGER_FAKE_PLATFORMS: z.enum(["enabled", "disabled"]).default("disabled"),
+  MEDIA_MANAGER_SCHEDULER_INTERVAL_MS: z.coerce.number().int().min(1000).max(15 * 60_000).default(60_000),
+  // Negative values (non-production only) allow scheduling slightly in the past, for fast browser tests.
+  MEDIA_MANAGER_MIN_LEAD_SECONDS: z.coerce.number().int().min(-600).max(3600).default(60),
 });
 
 export function productionDataDir(home = homedir()): string {
@@ -62,6 +71,15 @@ export function loadConfig(
     throw new Error("Live publishing can only be enabled in production");
   }
 
+  const fakePlatforms = parsed.MEDIA_MANAGER_FAKE_PLATFORMS === "enabled";
+  if (fakePlatforms && appEnv === "production") {
+    throw new Error("Simulated platforms can never be enabled in production");
+  }
+  if (fakePlatforms && livePublishing) throw new Error("Simulated and live publishing are mutually exclusive");
+  if (appEnv === "production" && parsed.MEDIA_MANAGER_MIN_LEAD_SECONDS < 60) {
+    throw new Error("In production, schedules must be at least 60 seconds ahead");
+  }
+
   return {
     env: appEnv,
     host: "127.0.0.1",
@@ -69,5 +87,8 @@ export function loadConfig(
     dataDir,
     webRoot: join(repoRoot, "dist", "web"),
     livePublishing,
+    fakePlatforms,
+    schedulerIntervalMs: parsed.MEDIA_MANAGER_SCHEDULER_INTERVAL_MS,
+    minScheduleLeadMs: parsed.MEDIA_MANAGER_MIN_LEAD_SECONDS * 1000,
   };
 }

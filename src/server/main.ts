@@ -1,8 +1,15 @@
 // Process entry point: `node src/server/main.ts`.
 import { readFileSync } from "node:fs";
 import { join, resolve } from "node:path";
+import { createFakePlatform } from "../platforms/fake.ts";
+import { NO_ADAPTERS, type AdapterRegistry } from "../platforms/types.ts";
+import { startScheduler } from "../scheduler/scheduler.ts";
+import { createAccountsRepo } from "../storage/accounts-repo.ts";
 import { acquireInstanceLock } from "../storage/instance-lock.ts";
-import { prepareDataDir } from "../storage/data-dir.ts";
+import { createMediaStore } from "../storage/media-store.ts";
+import { createPostsRepo } from "../storage/posts-repo.ts";
+import { createScheduleRepo } from "../storage/schedule-repo.ts";
+import { dataPaths, prepareDataDir } from "../storage/data-dir.ts";
 import { openDatabase } from "../storage/db.ts";
 import { migrate } from "../storage/migrate.ts";
 import { buildApp } from "./app.ts";
@@ -34,6 +41,7 @@ async function main(): Promise<void> {
     shuttingDown = true;
     app.log.info({ signal }, "shutting down");
     clearInterval(rotation);
+    await scheduler.stop();
     await app.close();
     db.close();
     removeLaunchFile(paths.launchFile);
@@ -42,6 +50,23 @@ async function main(): Promise<void> {
   };
 
   await app.listen({ host: config.host, port: config.port });
+
+  // The backend owns scheduling; it keeps running with no browser open.
+  const fakes = { instagram: createFakePlatform("instagram"), pinterest: createFakePlatform("pinterest") };
+  const adapters: AdapterRegistry = config.fakePlatforms ? (p) => fakes[p] : NO_ADAPTERS;
+  const accounts = createAccountsRepo(db);
+  const posts = createPostsRepo(db, accounts);
+  const scheduler = startScheduler({
+    accounts,
+    posts,
+    media: createMediaStore(db, dataPaths(config.dataDir).media),
+    schedule: createScheduleRepo(db, posts),
+    adapters,
+    now: () => new Date(),
+    log: app.log,
+    intervalMs: config.schedulerIntervalMs,
+  });
+  if (config.fakePlatforms) app.log.warn("SIMULATED platforms are enabled: nothing is sent to Instagram or Pinterest");
   publishLaunchLink();
   const rotation = setInterval(publishLaunchLink, LAUNCH_ROTATE_MS);
   process.on("SIGINT", () => void shutdown("SIGINT"));

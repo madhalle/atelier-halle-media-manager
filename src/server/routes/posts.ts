@@ -51,7 +51,10 @@ const PatchBody = z
 const RevisionBody = z.object({ revision: z.number().int().positive() }).strict();
 const CopyBody = z.object({ accountIds: z.array(z.uuid()).min(1).max(100) }).strict();
 
-export function registerPostRoutes(api: FastifyInstance, deps: { accounts: AccountsRepo; posts: PostsRepo; media: MediaStore }): void {
+export function registerPostRoutes(
+  api: FastifyInstance,
+  deps: { accounts: AccountsRepo; posts: PostsRepo; media: MediaStore },
+): { view: (p: Post) => PostView } {
   const { accounts, posts, media } = deps;
 
   function view(p: Post): PostView {
@@ -125,4 +128,6 @@ export function registerPostRoutes(api: FastifyInstance, deps: { accounts: Accou
     const { file } = await media.derivative(asset, platform, crop);
     return reply.type("image/jpeg").header("cache-control", "private, max-age=3600").send(createReadStream(file));
   });
+
+  return { view };
 }

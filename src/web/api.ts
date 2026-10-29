@@ -149,10 +149,33 @@ export interface PostMediaItem {
   previewUrl: string;
 }
 
+export type AttentionKind =
+  | "not_connected"
+  | "not_configured"
+  | "missed"
+  | "validation"
+  | "permanent"
+  | "auth"
+  | "retries_exhausted"
+  | "ambiguous";
+
 export interface Post extends PostFields {
   id: string;
   accountId: string;
   status: PostStatus;
+  scheduledAt: string | null;
+  timezone: string | null;
+  localTime: string | null;
+  attemptCount: number;
+  nextAttemptAt: string | null;
+  cancelRequested: boolean;
+  commitStartedAt: string | null;
+  remotePostId: string | null;
+  remotePermalink: string | null;
+  publishedAt: string | null;
+  publishedSimulated: boolean;
+  attentionKind: AttentionKind | null;
+  attentionMessage: string | null;
   pinBoardId: string | null;
   pinBoardName: string | null;
   copiedFromPostId: string | null;
@@ -211,3 +234,87 @@ export const STATUS_LABEL: Record<PostStatus, string> = {
   needs_attention: "Needs attention",
   canceled: "Canceled",
 };
+
+// ---- Scheduling ----
+
+export class ScheduleConflict extends ApiError {
+  readonly detail: {
+    suggestion?: { localTime: string; instant: string; offset: string };
+    earlier?: { instant: string; offset: string };
+    later?: { instant: string; offset: string };
+  };
+  constructor(code: string, message: string, detail: ScheduleConflict["detail"]) {
+    super(409, code, message);
+    this.detail = detail;
+  }
+}
+
+export async function schedulePost(
+  post: Post,
+  localTime: string,
+  timeZone: string,
+  choice?: "earlier" | "later",
+): Promise<{ post: Post; warnings: string[] }> {
+  const res = await fetch(`/api/posts/${post.id}/schedule`, {
+    method: "POST",
+    credentials: "same-origin",
+    headers: { "content-type": "application/json", accept: "application/json", ...(csrfToken ? { "x-csrf-token": csrfToken } : {}) },
+    body: JSON.stringify({ revision: post.revision, localTime, timeZone, ...(choice ? { choice } : {}) }),
+  });
+  const data = (await res.json().catch(() => ({}))) as Record<string, unknown>;
+  if (res.status === 409 && (data.error === "nonexistent_time" || data.error === "ambiguous_time")) {
+    throw new ScheduleConflict(data.error, String(data.message), data as ScheduleConflict["detail"]);
+  }
+  if (!res.ok) throw new ApiError(res.status, String(data.error ?? "request_failed"), String(data.message ?? "Could not schedule."));
+  return data as { post: Post; warnings: string[] };
+}
+
+export const cancelSchedule = (post: Post) =>
+  request<{ post: Post; immediate: boolean; message: string }>("POST", `/api/posts/${post.id}/cancel`, { revision: post.revision });
+export const dismissAttention = (post: Post) =>
+  request<{ post: Post }>("POST", `/api/posts/${post.id}/dismiss`, { revision: post.revision }).then((r) => r.post);
+export const resolveOutcome = (post: Post, outcome: "published" | "not_published") =>
+  request<{ post: Post }>("POST", `/api/posts/${post.id}/resolve`, { revision: post.revision, outcome }).then((r) => r.post);
+
+export interface Attempt {
+  id: string;
+  attemptNo: number;
+  startedAt: string;
+  finishedAt: string | null;
+  stage: string;
+  outcome: string;
+  errorCode: string | null;
+  errorMessage: string | null;
+  remotePostId: string | null;
+  simulated: boolean;
+}
+export const listAttempts = (postId: string) => request<{ attempts: Attempt[] }>("GET", `/api/posts/${postId}/attempts`).then((r) => r.attempts);
+
+export interface Settings {
+  defaultTimezone: string;
+  missedGraceMinutes: number;
+}
+export const getSettings = () => request<{ settings: Settings }>("GET", "/api/settings").then((r) => r.settings);
+export const updateSettings = (s: Partial<Settings>) => request<{ settings: Settings }>("PATCH", "/api/settings", s).then((r) => r.settings);
+
+export interface Health {
+  scheduler: { running: boolean; lastCheckAt: string | null; intervalSeconds: number; stale: boolean; lastError: string | null };
+  counts: { scheduled: number; overdue: number; needsAttention: number; inFlight: number };
+  settings: Settings;
+  publishing: "simulated" | "live" | "not_configured";
+}
+export const getHealth = () => request<Health>("GET", "/api/health");
+
+/** "Tue, Oct 29, 9:00 AM EDT" in the post's own zone. */
+export function formatInZone(instant: string, timeZone: string): string {
+  return new Intl.DateTimeFormat(undefined, {
+    weekday: "short",
+    month: "short",
+    day: "numeric",
+    year: "numeric",
+    hour: "numeric",
+    minute: "2-digit",
+    timeZone,
+    timeZoneName: "short",
+  }).format(new Date(instant));
+}

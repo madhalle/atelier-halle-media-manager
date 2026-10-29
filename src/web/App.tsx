@@ -14,6 +14,7 @@ import {
   type Status,
 } from "./api.ts";
 import { GuardProvider, useGuard } from "./dialogs.tsx";
+import { HealthBanner, HealthLine, SettingsDialog, useHealth } from "./Health.tsx";
 import { Sidebar, type AccountActions } from "./Sidebar.tsx";
 
 type Boot = { kind: "loading" } | { kind: "signed-out" } | { kind: "error"; message: string } | { kind: "ready"; status: Status; accounts: Account[] };
@@ -78,6 +79,11 @@ function Shell({ status, initialAccounts }: { status: Status; initialAccounts: A
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [renameTarget, setRenameTarget] = useState<string | null>(null);
   const [notice, setNotice] = useState<{ text: string; tone: "info" | "error" } | null>(null);
+  const [settingsOpen, setSettingsOpen] = useState(false);
+  const [health, refreshHealth] = useHealth();
+  useEffect(() => {
+    if (notice) refreshHealth();
+  }, [notice, refreshHealth]);
   const titleFocus = useRef(false);
 
   const selected = accounts.find((a) => a.id === selectedId) ?? null;
@@ -204,13 +210,12 @@ function Shell({ status, initialAccounts }: { status: Status; initialAccounts: A
 
       <aside id="sidebar" aria-label="Accounts sidebar">
         <Sidebar accounts={accounts} selectedId={selectedId} actions={actions} onAdd={() => setAddOpen(true)} />
-        <p className="service-line">
-          v{status.version} · {status.environment} · live publishing {status.livePublishing}
-        </p>
+        <HealthLine health={health} version={status.version} onSettings={() => setSettingsOpen(true)} />
       </aside>
       {drawerOpen && <div className="backdrop" aria-hidden="true" onClick={() => setDrawerOpen(false)} />}
 
       <main id="main">
+        <HealthBanner health={health} />
         {notice && (
           <div className={`notice-bar ${notice.tone}`} role={notice.tone === "error" ? "alert" : "status"}>
             <span>{notice.text}</span>
@@ -247,6 +252,16 @@ function Shell({ status, initialAccounts }: { status: Status; initialAccounts: A
         )}
       </main>
 
+      <SettingsDialog
+        open={settingsOpen}
+        settings={health?.settings ?? null}
+        onClose={() => setSettingsOpen(false)}
+        onSaved={() => {
+          setSettingsOpen(false);
+          refreshHealth();
+          setNotice({ text: "Settings saved.", tone: "info" });
+        }}
+      />
       <AddAccountDialog
         open={addOpen}
         onClose={() => setAddOpen(false)}

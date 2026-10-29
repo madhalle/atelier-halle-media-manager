@@ -3,7 +3,7 @@ import { useCallback, useEffect, useState } from "react";
 import { Composer } from "./Composer.tsx";
 import { CopyDialog } from "./CopyDialog.tsx";
 import { PhotoLibraryDialog } from "./PhotoLibrary.tsx";
-import { ApiError, createPost, getPost, listPosts, STATUS_LABEL, type Account, type Post, type PostStatus, type StatusCounts } from "./api.ts";
+import { ApiError, createPost, formatInZone, getPost, getSettings, listPosts, STATUS_LABEL, type Account, type Post, type PostStatus, type StatusCounts } from "./api.ts";
 import { useGuard } from "./dialogs.tsx";
 
 const FILTERS: { key: string; label: string; statuses: PostStatus[] | null }[] = [
@@ -31,6 +31,7 @@ export function PostsSection({ account, accounts, openPostId, onOpenPost, onNoti
   const [copying, setCopying] = useState<Post | null>(null);
   const [openPost, setOpenPost] = useState<Post | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [defaultTimezone, setDefaultTimezone] = useState("America/New_York");
 
   const refresh = useCallback(async () => {
     try {
@@ -43,6 +44,18 @@ export function PostsSection({ account, accounts, openPostId, onOpenPost, onNoti
   }, [account.id]);
 
   useEffect(() => void refresh(), [refresh]);
+  useEffect(() => void getSettings().then((s) => setDefaultTimezone(s.defaultTimezone)), []);
+
+  // The backend publishes on its own; poll so results show up without a reload.
+  const pending = (p: Post) => p.status === "scheduled" || p.status === "retry_waiting" || p.status === "preparing" || p.status === "publishing";
+  useEffect(() => {
+    const t = setInterval(() => {
+      if (document.hidden) return;
+      if (openPost && pending(openPost)) void getPost(openPost.id).then((p) => setOpenPost((cur) => (cur?.id === p.id ? p : cur)));
+      else if (!openPost) void refresh();
+    }, 15_000);
+    return () => clearInterval(t);
+  }, [openPost, refresh]);
 
   useEffect(() => {
     if (!openPostId) return setOpenPost(null);
@@ -81,6 +94,8 @@ export function PostsSection({ account, accounts, openPostId, onOpenPost, onNoti
           key={openPost.id}
           post={openPost}
           account={account}
+          defaultTimezone={defaultTimezone}
+          onNotice={onNotice}
           onSaved={(p) => {
             setOpenPost(p);
             void refresh();
@@ -139,6 +154,16 @@ export function PostsSection({ account, accounts, openPostId, onOpenPost, onNoti
           {error}
         </p>
       )}
+      {counts && counts.needs_attention > 0 && filter !== "attention" && (
+        <div className="notice-bar error" role="alert">
+          <span>
+            {counts.needs_attention} post{counts.needs_attention === 1 ? " needs" : "s need"} your attention.
+          </span>
+          <button type="button" className="link-button" onClick={() => setFilter("attention")}>
+            Show
+          </button>
+        </div>
+      )}
 
       {posts === null ? (
         <p>Loading…</p>
@@ -189,6 +214,16 @@ function PostCard({ post, account, onOpen }: { post: Post; account: Account; onO
       <span className="post-card-body">
         <span className={`status status-${post.status}`}>{STATUS_LABEL[post.status]}</span>
         <span className="caption-preview">{preview || <em className="hint">No text yet</em>}</span>
+        {post.scheduledAt && (post.status === "scheduled" || post.status === "retry_waiting" || post.status === "preparing" || post.status === "publishing") && (
+          <span className="when">{formatInZone(post.scheduledAt, post.timezone ?? "UTC")}</span>
+        )}
+        {post.status === "published" && post.publishedAt && (
+          <span className="when">
+            {formatInZone(post.publishedAt, post.timezone ?? "UTC")}
+            {post.publishedSimulated && " · simulated"}
+          </span>
+        )}
+        {post.status === "needs_attention" && post.attentionMessage && <span className="attention-text">{post.attentionMessage}</span>}
         {post.status === "draft" && blocking > 0 && (
           <span className="hint">
             {blocking} issue{blocking === 1 ? "" : "s"} before scheduling

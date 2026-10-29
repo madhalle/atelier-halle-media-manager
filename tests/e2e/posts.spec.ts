@@ -109,7 +109,7 @@ test("copies to other accounts as independent drafts; archived accounts are excl
   await dialog.getByRole("checkbox", { name: /Atelier Halle Pinterest/ }).check();
   await dialog.getByRole("checkbox", { name: /Personal Instagram/ }).check();
   await dialog.getByRole("button", { name: "Create 2 drafts" }).click();
-  await expect(page.getByRole("status")).toContainText("Created 2 independent drafts on: Atelier Halle Pinterest, Personal Instagram. Nothing was scheduled.");
+  await expect(page.getByRole("status").filter({ hasText: "Created 2" })).toContainText("Created 2 independent drafts on: Atelier Halle Pinterest, Personal Instagram. Nothing was scheduled.");
 
   await page.getByRole("button", { name: "← Back to posts" }).click();
   await tab(page, "Atelier Halle Pinterest").click();
@@ -155,7 +155,7 @@ test("deletes a draft but keeps its photo in the library", async ({ page, server
   await newPostFromUpload(page, { name: "keep.jpg", buffer: await jpeg(1000, 1500) });
   await page.getByRole("button", { name: "Delete draft…" }).click();
   await page.getByRole("dialog").getByRole("button", { name: "Delete draft" }).click();
-  await expect(page.getByRole("status")).toContainText("Draft deleted");
+  await expect(page.getByRole("status").filter({ hasText: "Draft deleted" })).toBeVisible();
   await expect(page.locator(".post-card")).toHaveCount(0);
   await page.getByRole("button", { name: "Photo library" }).click();
   await expect(page.getByRole("dialog").locator(".library-grid li")).toHaveCount(1);

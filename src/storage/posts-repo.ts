@@ -3,6 +3,7 @@ import { randomUUID } from "node:crypto";
 import type { Account } from "../domain/accounts.ts";
 import { DomainError } from "../domain/errors.ts";
 import {
+  type AttentionKind,
   assertEditable,
   fieldsForCopy,
   PLATFORM_ASPECTS,
@@ -30,6 +31,19 @@ interface PostRow {
   revision: number;
   created_at: string;
   updated_at: string;
+  scheduled_at: string | null;
+  timezone: string | null;
+  local_time: string | null;
+  attempt_count: number;
+  next_attempt_at: string | null;
+  cancel_requested: 0 | 1;
+  commit_started_at: string | null;
+  remote_post_id: string | null;
+  remote_permalink: string | null;
+  published_at: string | null;
+  published_simulated: 0 | 1;
+  attention_kind: AttentionKind | null;
+  attention_message: string | null;
 }
 
 interface MediaRow {
@@ -68,6 +82,19 @@ export function createPostsRepo(db: Db, accounts: AccountsRepo, now: () => Date 
       revision: r.revision,
       createdAt: r.created_at,
       updatedAt: r.updated_at,
+      scheduledAt: r.scheduled_at,
+      timezone: r.timezone,
+      localTime: r.local_time,
+      attemptCount: r.attempt_count,
+      nextAttemptAt: r.next_attempt_at,
+      cancelRequested: r.cancel_requested === 1,
+      commitStartedAt: r.commit_started_at,
+      remotePostId: r.remote_post_id,
+      remotePermalink: r.remote_permalink,
+      publishedAt: r.published_at,
+      publishedSimulated: r.published_simulated === 1,
+      attentionKind: r.attention_kind,
+      attentionMessage: r.attention_message,
       media: media.map(
         (m): PostMedia => ({
           position: m.position,
@@ -123,8 +150,16 @@ export function createPostsRepo(db: Db, accounts: AccountsRepo, now: () => Date 
   return {
     get,
 
+    /** Scheduled work first in chronological order, then everything else newest first. */
     listForAccount(accountId: string): Post[] {
-      const rows = db.prepare<[string], PostRow>("SELECT * FROM posts WHERE account_id = ? ORDER BY updated_at DESC, id").all(accountId);
+      const rows = db
+        .prepare<[string], PostRow>(
+          `SELECT * FROM posts WHERE account_id = ?
+           ORDER BY CASE WHEN status IN ('scheduled', 'retry_waiting', 'preparing', 'publishing') THEN 0 ELSE 1 END,
+             CASE WHEN status IN ('scheduled', 'retry_waiting', 'preparing', 'publishing') THEN scheduled_at END ASC,
+             updated_at DESC, id`,
+        )
+        .all(accountId);
       const media = db
         .prepare<[string], MediaRow>(
           "SELECT pm.* FROM post_media pm JOIN posts p ON p.id = pm.post_id WHERE p.account_id = ? ORDER BY pm.position",
@@ -178,7 +213,13 @@ export function createPostsRepo(db: Db, accounts: AccountsRepo, now: () => Date 
           throw new DomainError("stale_revision", "This post changed in another window. Reload and try again.");
         }
         if (post.status !== "draft" && post.status !== "canceled") {
-          throw new DomainError("invalid_state", "Only unpublished drafts can be deleted.");
+          throw new DomainError("invalid_state", "Only unpublished drafts can be deleted. Cancel the schedule first.");
+        }
+        const committed = db
+          .prepare<[string], { n: number }>("SELECT count(*) AS n FROM publish_attempts WHERE post_id = ? AND stage IN ('commit', 'reconcile')")
+          .get(id)!.n;
+        if (committed > 0 || post.commitStartedAt) {
+          throw new DomainError("invalid_state", "This post was sent to the platform at least once, so its history is kept.");
         }
         db.prepare("UPDATE posts SET copied_from_post_id = NULL WHERE copied_from_post_id = ?").run(id);
         db.prepare("DELETE FROM posts WHERE id = ?").run(id);

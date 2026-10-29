@@ -16,6 +16,7 @@ import {
   type PostFields,
 } from "./api.ts";
 import { useDirty, useGuard } from "./dialogs.tsx";
+import { SchedulePanel } from "./SchedulePanel.tsx";
 
 const LIMITS = {
   caption: 2200,
@@ -52,16 +53,27 @@ function useDebounced<T>(value: T, ms: number): T {
 interface Props {
   post: Post;
   account: Account;
+  defaultTimezone: string;
+  onNotice: (text: string) => void;
   onSaved: (p: Post) => void;
   onClose: () => void;
   onDeleted: () => void;
   onCopy: (p: Post) => void;
 }
 
-export function Composer({ post, account, onSaved, onClose, onDeleted, onCopy }: Props) {
+export function Composer({ post, account, defaultTimezone, onNotice, onSaved, onClose, onDeleted, onCopy }: Props) {
   const { confirm, confirmDiscard } = useGuard();
   const platform = account.platform;
-  const editable = post.status === "draft" || post.status === "canceled";
+  // Mirrors the server's rules; the server enforces them regardless.
+  const editable =
+    (post.status === "draft" ||
+      post.status === "canceled" ||
+      post.status === "scheduled" ||
+      post.status === "retry_waiting" ||
+      post.status === "needs_attention") &&
+    post.commitStartedAt === null &&
+    post.attentionKind !== "ambiguous";
+  const deletable = post.status === "draft" || post.status === "canceled";
   const item = post.media[0];
 
   const pick = (p: Post): PostFields => ({
@@ -296,6 +308,7 @@ export function Composer({ post, account, onSaved, onClose, onDeleted, onCopy }:
           </details>
         </section>
 
+        {editable && (
         <section className="composer-checks" aria-labelledby="checks-heading">
           <h3 id="checks-heading">Ready to schedule?</h3>
           {dirty && <p className="hint">Save to re-check.</p>}
@@ -319,10 +332,16 @@ export function Composer({ post, account, onSaved, onClose, onDeleted, onCopy }:
             <p className="hint">Even when ready, this account won’t publish until: {account.publishing.blockers.join(" ")}</p>
           )}
         </section>
+        )}
 
         {error && (
           <p className="error" role="alert">
             {error}
+          </p>
+        )}
+        {!editable && (
+          <p className="hint composer-locked">
+            {post.status === "published" ? "Published posts can't be edited here." : "Editing is locked while this post is being published or its outcome is checked."}
           </p>
         )}
         <div className="composer-actions">
@@ -334,13 +353,14 @@ export function Composer({ post, account, onSaved, onClose, onDeleted, onCopy }:
           <button type="button" onClick={() => void copy()} disabled={saving}>
             Copy to accounts…
           </button>
-          {editable && (
+          {deletable && (
             <button type="button" className="danger" onClick={() => void remove()}>
               Delete draft…
             </button>
           )}
         </div>
       </form>
+      <SchedulePanel post={post} account={account} defaultTimezone={defaultTimezone} dirty={dirty} onChanged={onSaved} onNotice={onNotice} />
     </article>
   );
 }
