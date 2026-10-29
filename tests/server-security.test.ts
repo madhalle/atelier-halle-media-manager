@@ -1,4 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { loadMigrations } from "../src/storage/migrate.ts";
 import { LAUNCH_TOKEN_TTL_MS, SESSION_IDLE_TTL_MS } from "../src/server/sessions.ts";
 import { createTestApp, sameOrigin, signIn, type TestApp } from "./helpers.ts";
 
@@ -81,7 +82,7 @@ describe("API authentication and CSRF", () => {
     const { cookie } = await signIn(t);
     const res = await t.app.inject({ method: "GET", url: "/api/status", headers: sameOrigin(port, { cookie }) });
     expect(res.statusCode).toBe(200);
-    expect(res.json()).toMatchObject({ environment: "test", livePublishing: "disabled", schemaVersion: 1 });
+    expect(res.json()).toMatchObject({ environment: "test", livePublishing: "disabled", schemaVersion: loadMigrations().length });
     expect(res.headers["cache-control"]).toBe("no-store");
   });
 

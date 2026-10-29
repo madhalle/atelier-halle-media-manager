@@ -5,8 +5,11 @@ import cookie from "@fastify/cookie";
 import fastifyStatic from "@fastify/static";
 import Fastify, { type FastifyInstance, type FastifyRequest } from "fastify";
 import { z } from "zod";
+import { DomainError, type DomainErrorCode } from "../domain/errors.ts";
+import { createAccountsRepo } from "../storage/accounts-repo.ts";
 import type { Db } from "../storage/db.ts";
 import type { Config } from "./config.ts";
+import { registerAccountRoutes } from "./routes/accounts.ts";
 import { allowedHosts, allowedOrigins, checkSameOrigin, isUnsafeMethod, redactUrl, SECURITY_HEADERS } from "./security.ts";
 import { safeEqual, SESSION_ABSOLUTE_TTL_MS, type Session, type SessionStore } from "./sessions.ts";
 
@@ -21,7 +24,16 @@ export interface AppDeps {
   /** Called after a launch token is consumed, so a fresh one can be published. */
   onLaunchTokenUsed?: () => void;
   logStream?: { write(line: string): void };
+  now?: () => Date;
 }
+
+const DOMAIN_STATUS: Record<DomainErrorCode, number> = {
+  validation: 400,
+  not_found: 404,
+  stale_revision: 409,
+  invalid_state: 409,
+  duplicate_identity: 409,
+};
 
 declare module "fastify" {
   interface FastifyRequest {
@@ -50,6 +62,21 @@ export async function buildApp(deps: AppDeps): Promise<FastifyInstance> {
   });
 
   app.decorateRequest("session", null);
+
+  app.setErrorHandler(async (err, req, reply) => {
+    if (err instanceof DomainError) {
+      return reply.code(DOMAIN_STATUS[err.code]).send({ error: err.code, message: err.message });
+    }
+    if (err instanceof z.ZodError) {
+      return reply.code(400).send({ error: "validation", message: "The request was not valid.", issues: err.issues.map((i) => ({ path: i.path.join("."), message: i.message })) });
+    }
+    const status = (err as { statusCode?: number }).statusCode;
+    if (status !== undefined && status >= 400 && status < 500) {
+      return reply.code(status).send({ error: (err as { code?: string }).code ?? "bad_request", message: (err as Error).message });
+    }
+    req.log.error({ err }, "unhandled error");
+    return reply.code(500).send({ error: "internal", message: "Something went wrong. Details are in the server log." });
+  });
   await app.register(cookie);
 
   app.addHook("onRequest", async (req, reply) => {
@@ -100,6 +127,8 @@ export async function buildApp(deps: AppDeps): Promise<FastifyInstance> {
         }
       }
     });
+
+    registerAccountRoutes(api, createAccountsRepo(db, deps.now));
 
     api.get("/session", async (req) => ({ authenticated: true, csrfToken: req.session!.csrfToken }));
 

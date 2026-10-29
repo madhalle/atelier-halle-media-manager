@@ -3,7 +3,7 @@
 A private, single-user, local-first tool for preparing and scheduling photo
 posts to Instagram and Pinterest from macOS, without opening the social apps.
 
-**Status: milestone 2 (secure local foundation).**
+**Status: milestone 3 (accounts and layout).**
 
 | Area | Status |
 |---|---|
@@ -11,7 +11,11 @@ posts to Instagram and Pinterest from macOS, without opening the social apps.
 | Migrations | ✅ Works |
 | Data directories | ✅ Works |
 | Built UI served from the same origin | ✅ Works |
-| Accounts, gallery, uploads, scheduling | ⏳ Not built yet (milestones 3–5) |
+| Accounts: create on either platform, rename, reorder, archive, restore | ✅ Works |
+| Vertical account sidebar, per-account main panel, narrow-screen drawer | ✅ Works |
+| Identity uniqueness and schedule-review rules | ✅ Works (enforced in the database; exercised by tests only, since connecting needs platform sign-in) |
+| Photo uploads, composer, copies, scheduling | ⏳ Not built yet (milestones 4–5) |
+| Connect / disconnect a real platform account | ⏳ Not built yet (milestone 6) |
 | Instagram / Pinterest publishing | ❌ Not built and not tested live; see [capabilities](docs/platform-capabilities.md) |
 
 More documentation:
@@ -41,7 +45,8 @@ npm run open        # open the running app in your browser (signs this browser i
 npm run typecheck   # strict TypeScript (server + web)
 npm run lint        # oxlint
 npm test            # Vitest; live publishing is always disabled in tests
-npm run check       # all three
+npm run test:e2e    # build, then Playwright browser tests against throwaway data
+npm run check       # typecheck + lint + unit tests
 ```
 
 The server runs TypeScript directly through Node's built-in type stripping, so
@@ -74,3 +79,10 @@ refuses it.
   which is allowed in production only.
 - Keep this repository private and turn on GitHub secret scanning. A private
   repository is still not a place to store secrets.
+
+### Browser tests
+
+Playwright uses its own Chromium build. Install it once with
+`npx playwright install chromium`. It goes into
+`~/Library/Caches/ms-playwright`. Each test starts the real server on its own
+temporary data directory.
