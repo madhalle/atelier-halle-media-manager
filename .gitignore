@@ -1,0 +1,31 @@
+# Dependencies and build output
+node_modules/
+dist/
+
+# Local application data: databases, media, logs, backups, secrets.
+# The default data directory lives outside the checkout
+# (~/Library/Application Support/AtelierHalleMediaManager); these entries
+# guard against a project-local data directory being committed by mistake.
+.data/
+data/
+*.db
+*.db-wal
+*.db-shm
+*.sqlite
+*.sqlite3
+backups/
+*.log
+logs/
+
+# Local configuration and secrets
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+
+# Test and tool output
+coverage/
+test-results/
+playwright-report/
+.DS_Store

@@ -1,0 +1,32 @@
+{
+  "name": "atelier-halle-media-manager",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Private, single-user, local-first photo post planner and scheduler for Instagram and Pinterest.",
+  "license": "UNLICENSED",
+  "type": "module",
+  "engines": {
+    "node": ">=26.13.0 <27"
+  },
+  "scripts": {
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "test:watch": "vitest"
+  },
+  "dependencies": {
+    "@napi-rs/keyring": "2.1.2",
+    "better-sqlite3": "13.0.3",
+    "fastify": "5.12.7",
+    "sharp": "0.35.5",
+    "zod": "4.6.7"
+  },
+  "devDependencies": {
+    "@types/better-sqlite3": "9.6.0",
+    "@types/node": "26.6.6",
+    "typescript": "7.0.2",
+    "vitest": "5.0.5"
+  },
+  "allowScripts": {
+    "better-sqlite3": false
+  }
+}
