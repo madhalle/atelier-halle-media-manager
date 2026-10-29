@@ -7,9 +7,14 @@ import Fastify, { type FastifyInstance, type FastifyRequest } from "fastify";
 import { z } from "zod";
 import { DomainError, type DomainErrorCode } from "../domain/errors.ts";
 import { createAccountsRepo } from "../storage/accounts-repo.ts";
+import { dataPaths } from "../storage/data-dir.ts";
+import { createMediaStore } from "../storage/media-store.ts";
+import { createPostsRepo } from "../storage/posts-repo.ts";
 import type { Db } from "../storage/db.ts";
 import type { Config } from "./config.ts";
 import { registerAccountRoutes } from "./routes/accounts.ts";
+import { registerMediaRoutes } from "./routes/media.ts";
+import { registerPostRoutes } from "./routes/posts.ts";
 import { allowedHosts, allowedOrigins, checkSameOrigin, isUnsafeMethod, redactUrl, SECURITY_HEADERS } from "./security.ts";
 import { safeEqual, SESSION_ABSOLUTE_TTL_MS, type Session, type SessionStore } from "./sessions.ts";
 
@@ -63,6 +68,9 @@ export async function buildApp(deps: AppDeps): Promise<FastifyInstance> {
 
   app.decorateRequest("session", null);
 
+  const media = createMediaStore(db, dataPaths(config.dataDir).media, deps.now);
+  await media.init();
+
   app.setErrorHandler(async (err, req, reply) => {
     if (err instanceof DomainError) {
       return reply.code(DOMAIN_STATUS[err.code]).send({ error: err.code, message: err.message });
@@ -87,7 +95,9 @@ export async function buildApp(deps: AppDeps): Promise<FastifyInstance> {
 
   app.addHook("onSend", async (req, reply, payload) => {
     for (const [name, value] of Object.entries(SECURITY_HEADERS)) reply.header(name, value);
-    if (req.url.startsWith("/api/") || req.url.startsWith("/launch")) reply.header("cache-control", "no-store");
+    if ((req.url.startsWith("/api/") || req.url.startsWith("/launch")) && !reply.hasHeader("cache-control")) {
+      reply.header("cache-control", "no-store");
+    }
     return payload;
   });
 
@@ -128,7 +138,11 @@ export async function buildApp(deps: AppDeps): Promise<FastifyInstance> {
       }
     });
 
-    registerAccountRoutes(api, createAccountsRepo(db, deps.now));
+    const accounts = createAccountsRepo(db, deps.now);
+    const posts = createPostsRepo(db, accounts, deps.now);
+    registerAccountRoutes(api, accounts);
+    await registerMediaRoutes(api, media);
+    registerPostRoutes(api, { accounts, posts, media });
 
     api.get("/session", async (req) => ({ authenticated: true, csrfToken: req.session!.csrfToken }));
 

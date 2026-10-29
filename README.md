@@ -3,7 +3,7 @@
 A private, single-user, local-first tool for preparing and scheduling photo
 posts to Instagram and Pinterest from macOS, without opening the social apps.
 
-**Status: milestone 3 (accounts and layout).**
+**Status: milestone 4 (photos, composer, copies).**
 
 | Area | Status |
 |---|---|
@@ -14,7 +14,11 @@ posts to Instagram and Pinterest from macOS, without opening the social apps.
 | Accounts: create on either platform, rename, reorder, archive, restore | ✅ Works |
 | Vertical account sidebar, per-account main panel, narrow-screen drawer | ✅ Works |
 | Identity uniqueness and schedule-review rules | ✅ Works (enforced in the database; exercised by tests only, since connecting needs platform sign-in) |
-| Photo uploads, composer, copies, scheduling | ⏳ Not built yet (milestones 4–5) |
+| Photo library: multi-file upload, dedupe, thumbnails, safe deletion | ✅ Works |
+| Single-photo drafts, platform-specific composer, crop with exact preview, validation | ✅ Works |
+| Independent copies across accounts; deleting unpublished drafts | ✅ Works |
+| Pinterest board selection | ⏳ Needs a connected account (milestone 6) |
+| Scheduling, publishing history | ⏳ Not built yet (milestone 5) |
 | Connect / disconnect a real platform account | ⏳ Not built yet (milestone 6) |
 | Instagram / Pinterest publishing | ❌ Not built and not tested live; see [capabilities](docs/platform-capabilities.md) |
 
@@ -47,6 +51,7 @@ npm run lint        # oxlint
 npm test            # Vitest; live publishing is always disabled in tests
 npm run test:e2e    # build, then Playwright browser tests against throwaway data
 npm run check       # typecheck + lint + unit tests
+npm run audit:deps  # vulnerabilities, registry signatures/provenance, install scripts
 ```
 
 The server runs TypeScript directly through Node's built-in type stripping, so
@@ -86,3 +91,13 @@ Playwright uses its own Chromium build. Install it once with
 `npx playwright install chromium`. It goes into
 `~/Library/Caches/ms-playwright`. Each test starts the real server on its own
 temporary data directory.
+
+## Photos
+
+- **Accepted:** JPEG, PNG and WebP, up to 50 MB and 100 megapixels each.
+- **HEIC (iPhone default):** not supported yet. In Photos, choose
+  File › Export › Export 1 Photo, set Kind to JPEG, and upload that file.
+- **Originals:** uploads are copied into the app's data directory. Originals
+  are kept unchanged, including any location data. Everything sent to
+  Instagram or Pinterest is a separate copy with all metadata removed. See
+  [docs/security.md](docs/security.md#photo-handling).

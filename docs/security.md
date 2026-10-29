@@ -71,3 +71,68 @@ The SQLite database is not separately encrypted.
   - Live publishing can only be enabled in production.
 - **Single instance:** a lock file in the data directory stops two servers
   from using the same data.
+
+## Photo handling
+
+- **Uploads:**
+  - Uploads are streamed to `media/tmp`. Limits are 50 MB per file, 20 files
+    per request, and no other form fields.
+  - Uploads are refused when less than 1 GB of disk would remain.
+- **Format checks** use the file's leading bytes (its magic number), never the
+  file name or browser-supplied type. Only JPEG, PNG and WebP are accepted.
+  HEIC/HEIF gets an explanation and is refused.
+- **Decoder allowlist:** at startup the process blocks every libvips loader
+  except JPEG, PNG and WebP (`sharp.block` / `sharp.unblock`). SVG, TIFF,
+  GIF, PDF and the other parsers can't run on uploaded bytes even if the
+  format check were bypassed. A test confirms this.
+- **Pixel limits:** 100 megapixels and 20,000 px per side, checked from the
+  header before decoding. Each upload is also fully decoded once, so damaged
+  files are rejected at upload time, not at publishing time. At most two
+  images are processed at once.
+- **Originals:**
+  - Originals are content-addressed by SHA-256, read-only (`0400`) and never
+    modified. They keep their EXIF metadata, including location.
+  - Identical uploads are stored once.
+  - Uploaded file names are kept for display only. They're sanitized and
+    never used in a path.
+- **Derived images:** thumbnails (WebP, ≤480 px) and publishing derivatives
+  (sRGB JPEG) are oriented and stripped of **all** metadata, including GPS.
+- **Previews match uploads:** previews are the exact derivative file that
+  would be uploaded, for the exact crop. Nothing is cropped without the user
+  choosing it.
+- **Storage hygiene:**
+  - Derivatives are cached per crop and pruned when no post uses that crop.
+  - On startup the store deletes files a crash left unreferenced.
+  - Photos used by any post can't be deleted.
+- **Text rendering:** captions and file names are always rendered as text by
+  React. Nothing uses raw HTML insertion. A browser test checks this with a
+  script-injection payload.
+
+## Supply chain
+
+- **Dependencies:**
+  - Exact versions are pinned in `package.json`, and every package's
+    integrity hash is locked in `package-lock.json`.
+  - All packages resolve from the official npm registry.
+- **Install scripts:** npm `allowScripts` stops dependency install scripts by
+  default. `better-sqlite3` and `fsevents` are explicitly denied, because
+  their prebuilt binaries work without them.
+- **`npm run audit:deps`** reports known vulnerabilities, verifies npm
+  registry signatures and provenance attestations, and lists any unreviewed
+  install scripts. Run it after every dependency change.
+- **Checked on 2026-10-29:**
+  - 0 known vulnerabilities.
+  - 134/134 registry signatures valid.
+  - Every native-code dependency loaded by the server (`better-sqlite3`,
+    `sharp` with its libvips binaries, `@napi-rs/keyring`) has an npm
+    provenance attestation.
+- **Node.js:** installed from the official tarball after checking SHA-256
+  against `SHASUMS256.txt`. The binary carries a valid macOS Developer ID
+  signature from the Node.js Foundation (team `HX7739G8FX`). The PGP
+  signature of `SHASUMS256.txt` wasn't checked because `gpg` isn't installed.
+- **Playwright's Chromium** is used only by tests, against loopback. It
+  isn't code-signed. Remove it with `rm -rf ~/Library/Caches/ms-playwright`.
+- **Residual risk:** signatures and provenance show that a package came
+  unmodified from its publisher's build. They don't show that the publisher
+  is trustworthy. The dependency list is kept deliberately small for that
+  reason.

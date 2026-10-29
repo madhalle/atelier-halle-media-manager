@@ -60,18 +60,20 @@ export function App() {
   );
 }
 
-const HASH_PREFIX = "#/accounts/";
+const HASH_PATTERN = /^#\/accounts\/([0-9a-f-]{36})(?:\/posts\/([0-9a-f-]{36}))?$/;
 
-function initialSelection(accounts: Account[]): string | null {
-  const fromHash = location.hash.startsWith(HASH_PREFIX) ? location.hash.slice(HASH_PREFIX.length) : null;
-  if (fromHash && accounts.some((a) => a.id === fromHash)) return fromHash;
-  return accounts.find((a) => !a.archived)?.id ?? null;
+function initialRoute(accounts: Account[]): { accountId: string | null; postId: string | null } {
+  const m = HASH_PATTERN.exec(location.hash);
+  if (m && accounts.some((a) => a.id === m[1])) return { accountId: m[1]!, postId: m[2] ?? null };
+  return { accountId: accounts.find((a) => !a.archived)?.id ?? null, postId: null };
 }
 
 function Shell({ status, initialAccounts }: { status: Status; initialAccounts: Account[] }) {
   const { confirm, confirmDiscard } = useGuard();
   const [accounts, setAccounts] = useState(initialAccounts);
-  const [selectedId, setSelectedId] = useState<string | null>(() => initialSelection(initialAccounts));
+  const [route] = useState(() => initialRoute(initialAccounts));
+  const [selectedId, setSelectedId] = useState<string | null>(route.accountId);
+  const [openPostId, setOpenPostId] = useState<string | null>(route.postId);
   const [addOpen, setAddOpen] = useState(false);
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [renameTarget, setRenameTarget] = useState<string | null>(null);
@@ -81,8 +83,9 @@ function Shell({ status, initialAccounts }: { status: Status; initialAccounts: A
   const selected = accounts.find((a) => a.id === selectedId) ?? null;
 
   useEffect(() => {
-    history.replaceState(null, "", selectedId ? `${HASH_PREFIX}${selectedId}` : location.pathname);
-  }, [selectedId]);
+    const hash = selectedId ? `#/accounts/${selectedId}${openPostId ? `/posts/${openPostId}` : ""}` : "";
+    history.replaceState(null, "", hash || location.pathname);
+  }, [selectedId, openPostId]);
 
   useEffect(() => {
     if (titleFocus.current) {
@@ -121,6 +124,7 @@ function Shell({ status, initialAccounts }: { status: Status; initialAccounts: A
       }
       if (!(await confirmDiscard())) return false;
       setNotice(null);
+      setOpenPostId(null);
       setSelectedId(a.id);
       if (drawerOpen) {
         titleFocus.current = true;
@@ -167,7 +171,10 @@ function Shell({ status, initialAccounts }: { status: Status; initialAccounts: A
           const archived = await archiveAccount(a);
           const nextList = accounts.map((x) => (x.id === a.id ? archived : x));
           setAccounts(nextList);
-          if (a.id === selectedId) setSelectedId(nextList.find((x) => !x.archived)?.id ?? null);
+          if (a.id === selectedId) {
+            setOpenPostId(null);
+            setSelectedId(nextList.find((x) => !x.archived)?.id ?? null);
+          }
           setNotice({ text: `Archived “${a.displayName}”.`, tone: "info" });
         } catch (err) {
           await fail(err);
@@ -177,6 +184,7 @@ function Shell({ status, initialAccounts }: { status: Status; initialAccounts: A
       void restoreAccount(a)
         .then(async (restored) => {
           await reload();
+          setOpenPostId(null);
           setSelectedId(restored.id);
           setNotice({ text: `Restored “${restored.displayName}”. Any pending schedules stay paused until you review them.`, tone: "info" });
         })
@@ -215,6 +223,10 @@ function Shell({ status, initialAccounts }: { status: Status; initialAccounts: A
           <AccountPanel
             key={selected.id}
             account={selected}
+            accounts={accounts}
+            openPostId={openPostId}
+            onOpenPost={setOpenPostId}
+            onNotice={(text) => setNotice({ text, tone: "info" })}
             focusRename={renameTarget === selected.id}
             onRenameFocused={() => setRenameTarget(null)}
             onUpdated={upsert}

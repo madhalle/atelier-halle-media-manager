@@ -1,21 +1,17 @@
 // Main panel for the selected account: identity, publishing readiness,
-// status filters, gallery, and account settings.
+// posts (gallery or composer), and account settings.
 import { useEffect, useId, useRef, useState, type FormEvent } from "react";
 import { ApiError, CONNECTION_LABEL, PLATFORM_LABEL, renameAccount, type Account } from "./api.ts";
 import { useDirty } from "./dialogs.tsx";
 import { PlatformIcon } from "./icons.tsx";
-
-const FILTERS = [
-  { key: "all", label: "All" },
-  { key: "draft", label: "Drafts" },
-  { key: "scheduled", label: "Scheduled" },
-  { key: "published", label: "Published" },
-  { key: "attention", label: "Needs attention" },
-] as const;
-type Filter = (typeof FILTERS)[number]["key"];
+import { PostsSection } from "./Posts.tsx";
 
 interface Props {
   account: Account;
+  accounts: Account[];
+  openPostId: string | null;
+  onOpenPost: (id: string | null) => void;
+  onNotice: (text: string) => void;
   focusRename: boolean;
   onRenameFocused: () => void;
   onUpdated: (a: Account) => void;
@@ -24,8 +20,7 @@ interface Props {
   onAcknowledgeReview: (a: Account) => void;
 }
 
-export function AccountPanel({ account: a, focusRename, onRenameFocused, onUpdated, onArchive, onRestore, onAcknowledgeReview }: Props) {
-  const [filter, setFilter] = useState<Filter>("all");
+export function AccountPanel({ account: a, accounts, openPostId, onOpenPost, onNotice, focusRename, onRenameFocused, onUpdated, onArchive, onRestore, onAcknowledgeReview }: Props) {
   const identity = a.connection.identity;
   const formatDate = (iso: string) => new Date(iso).toLocaleString(undefined, { dateStyle: "medium", timeStyle: "short" });
 
@@ -76,24 +71,9 @@ export function AccountPanel({ account: a, focusRename, onRenameFocused, onUpdat
         </section>
       )}
 
-      <section aria-labelledby="posts-heading" className="posts">
-        <div className="posts-toolbar">
-          <h2 id="posts-heading">Posts</h2>
-          <div className="filters" role="group" aria-label="Filter posts by status">
-            {FILTERS.map((f) => (
-              <button key={f.key} type="button" aria-pressed={filter === f.key} onClick={() => setFilter(f.key)}>
-                {f.label} <span className="count">0</span>
-              </button>
-            ))}
-          </div>
-        </div>
-        <div className="gallery-empty">
-          <p>No posts for this account yet.</p>
-          <p className="hint">Photo uploads and the post composer are not available in this build yet.</p>
-        </div>
-      </section>
+      <PostsSection account={a} accounts={accounts} openPostId={openPostId} onOpenPost={onOpenPost} onNotice={onNotice} />
 
-      {!a.archived && (
+      {!a.archived && !openPostId && (
         <AccountSettings account={a} focusRename={focusRename} onRenameFocused={onRenameFocused} onUpdated={onUpdated} onArchive={onArchive} />
       )}
     </article>

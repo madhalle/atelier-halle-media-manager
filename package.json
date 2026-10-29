@@ -19,10 +19,12 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "check": "npm run typecheck && npm run lint && npm test",
-    "test:e2e": "npm run build && playwright test"
+    "test:e2e": "npm run build && playwright test",
+    "audit:deps": "npm audit && npm audit signatures && npm install-scripts ls"
   },
   "dependencies": {
     "@fastify/cookie": "11.1.5",
+    "@fastify/multipart": "10.1.6",
     "@fastify/static": "10.1.8",
     "@napi-rs/keyring": "2.1.2",
     "better-sqlite3": "13.0.3",

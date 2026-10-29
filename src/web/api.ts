@@ -88,3 +88,126 @@ export const CONNECTION_LABEL: Record<ConnectionState, string> = {
   needs_reconnect: "Reconnect needed",
   disconnected: "Disconnected",
 };
+
+// ---- Photo library and posts ----
+
+export interface MediaItem {
+  id: string;
+  width: number;
+  height: number;
+  format: "jpeg" | "png" | "webp";
+  byteSize: number;
+  originalFilename: string | null;
+  hasLocation: boolean;
+  usedByPosts: number;
+  thumbUrl: string;
+  createdAt: string;
+}
+
+export type UploadResult =
+  | { filename: string | null; ok: true; created: boolean; media: MediaItem }
+  | { filename: string | null; ok: false; error: string };
+
+export type PostStatus =
+  | "draft"
+  | "scheduled"
+  | "preparing"
+  | "publishing"
+  | "published"
+  | "retry_waiting"
+  | "needs_attention"
+  | "canceled";
+
+export type CropAspect = "original" | "1:1" | "4:5" | "1.91:1" | "2:3";
+
+export const PLATFORM_ASPECTS: Record<Platform, CropAspect[]> = {
+  instagram: ["original", "1:1", "4:5", "1.91:1"],
+  pinterest: ["original", "2:3", "1:1"],
+};
+
+export interface Issue {
+  field: "caption" | "altText" | "pinTitle" | "pinDescription" | "pinLink" | "pinBoard" | "media";
+  message: string;
+  severity: "blocking" | "warning";
+}
+
+export interface PostFields {
+  caption: string;
+  altText: string;
+  pinTitle: string;
+  pinDescription: string;
+  pinLink: string;
+}
+
+export interface PostMediaItem {
+  position: number;
+  mediaAssetId: string;
+  cropAspect: CropAspect;
+  focusX: number;
+  focusY: number;
+  asset: MediaItem;
+  previewUrl: string;
+}
+
+export interface Post extends PostFields {
+  id: string;
+  accountId: string;
+  status: PostStatus;
+  pinBoardId: string | null;
+  pinBoardName: string | null;
+  copiedFromPostId: string | null;
+  media: PostMediaItem[];
+  issues: Issue[];
+  revision: number;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export type StatusCounts = Record<PostStatus, number>;
+
+export async function uploadPhotos(files: File[]): Promise<UploadResult[]> {
+  const form = new FormData();
+  for (const f of files) form.append("files", f, f.name);
+  const res = await fetch("/api/media", {
+    method: "POST",
+    body: form,
+    credentials: "same-origin",
+    headers: csrfToken ? { "x-csrf-token": csrfToken } : {},
+  });
+  const data = (await res.json().catch(() => ({}))) as { results?: UploadResult[]; error?: string; message?: string };
+  if (!res.ok || !data.results) throw new ApiError(res.status, data.error ?? "upload_failed", data.message ?? "Upload failed.");
+  return data.results;
+}
+
+export const listMedia = () => request<{ media: MediaItem[] }>("GET", "/api/media").then((r) => r.media);
+export const deleteMedia = (id: string) => request<{ ok: true }>("DELETE", `/api/media/${id}`);
+export const derivativeUrl = (mediaId: string, platform: Platform, aspect: CropAspect, fx: number, fy: number) =>
+  `/api/media/${mediaId}/derivative?platform=${platform}&aspect=${encodeURIComponent(aspect)}&fx=${fx.toFixed(2)}&fy=${fy.toFixed(2)}`;
+
+export const listPosts = (accountId: string) =>
+  request<{ posts: Post[]; counts: StatusCounts }>("GET", `/api/accounts/${accountId}/posts`);
+export const createPost = (accountId: string, mediaAssetId: string) =>
+  request<{ post: Post }>("POST", `/api/accounts/${accountId}/posts`, { mediaAssetId }).then((r) => r.post);
+export const getPost = (id: string) => request<{ post: Post }>("GET", `/api/posts/${id}`).then((r) => r.post);
+export const updatePost = (
+  post: Post,
+  fields: Partial<PostFields>,
+  media?: { position: number; cropAspect: CropAspect; focusX: number; focusY: number }[],
+) =>
+  request<{ post: Post }>("PATCH", `/api/posts/${post.id}`, { revision: post.revision, fields, ...(media ? { media } : {}) }).then(
+    (r) => r.post,
+  );
+export const deletePost = (post: Post) => request<{ ok: true }>("DELETE", `/api/posts/${post.id}`, { revision: post.revision });
+export const copyPost = (post: Post, accountIds: string[]) =>
+  request<{ posts: Post[] }>("POST", `/api/posts/${post.id}/copies`, { accountIds }).then((r) => r.posts);
+
+export const STATUS_LABEL: Record<PostStatus, string> = {
+  draft: "Draft",
+  scheduled: "Scheduled",
+  preparing: "Preparing",
+  publishing: "Publishing",
+  published: "Published",
+  retry_waiting: "Retrying",
+  needs_attention: "Needs attention",
+  canceled: "Canceled",
+};
