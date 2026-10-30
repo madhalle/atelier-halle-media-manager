@@ -107,6 +107,11 @@ Designed and directed by Madeleine Halle, with Claude Code as an AI pair
 programmer for implementation. Product decisions, security requirements,
 platform and infrastructure setup, and review were human-led.
 
+## License
+
+Copyright (c) 2026 Madeleine Halle. All rights reserved. The source is public
+to view; see [LICENSE](LICENSE).
+
 ---
 
 ## Running it locally
