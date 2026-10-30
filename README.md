@@ -1,9 +1,117 @@
 # Atelier Halle Media Manager
 
-A private, single-user, local-first tool for preparing and scheduling photo
-posts to Instagram and Pinterest from macOS, without opening the social apps.
+A local-first macOS app for preparing, scheduling and publishing photo posts
+to multiple Instagram and Pinterest business accounts, through the platforms'
+official APIs, without opening the social apps.
 
-**Status: milestone 6 (sign-in, Keychain, real adapters; not yet verified live).**
+Built for a small creative business that posts the same work across several
+accounts and wants a calm, reliable workflow: one photo library, per-platform
+captions and crops, and posts that go out on time, exactly once.
+
+## What it does
+
+- **Multiple accounts, one library.** Add any number of Instagram and
+  Pinterest accounts. Upload photos once (deduplicated by content hash) and
+  reuse them across accounts.
+- **Platform-aware composer.** Captions, alt text, Pin titles, links and
+  boards, with each platform's limits validated live and an exact preview of
+  the crop that will be published.
+- **Scheduling that respects real time zones.** Explicit IANA time zones,
+  with daylight-saving gaps and overlaps resolved explicitly instead of guessed.
+- **Reliable publishing.** A durable background scheduler publishes through
+  the Instagram Graph API and Pinterest API v5, retries safely, respects rate
+  limits, and **never double-posts**: if a platform's response is lost, it
+  checks what actually happened before doing anything else.
+- **Secure account connections.** OAuth sign-in; every token and app secret
+  is stored only in the macOS Keychain.
+- **Backups and recovery.** Automatic daily and pre-upgrade backups that cost
+  no extra disk space, with verification, export and a safe restore.
+
+## Architecture
+
+```
+ Browser (React) ──HTTP, 127.0.0.1 only──▶ Fastify server (Node.js, TypeScript)
+                                            ├─ SQLite (WAL): accounts, posts, schedule, history
+                                            ├─ Photo library: content-addressed, read-only originals
+                                            ├─ macOS Keychain: OAuth tokens and app secrets
+                                            └─ Scheduler (polls SQLite, leases jobs)
+                                                 ├─▶ Pinterest API v5 (direct image upload)
+                                                 └─▶ Instagram Graph API
+                                                       └─ image staged in private Cloudflare R2,
+                                                          shared by a 15-minute presigned URL
+```
+
+Everything runs on one Mac. There is no hosted backend, no account system, and
+no inbound network access. See the [architecture decision record](docs/adr/0001-architecture.md).
+
+## Engineering highlights
+
+**Publishing exactly once.** Social APIs have no idempotency keys, and a
+network failure after the "publish" call leaves the outcome unknown. The
+scheduler claims each job with an atomic `UPDATE … RETURNING` lease, records a
+durable marker *before* the irreversible call, and on any uncertain outcome
+**reconciles** against the platform instead of retrying blindly. Failures are
+classified (transient, rate-limited, auth-expired, permanent, ambiguous) with
+bounded, jittered backoff. Details: [docs/scheduling.md](docs/scheduling.md).
+
+**Security by design.** See [docs/security.md](docs/security.md).
+- Loopback-only server with Host and Origin checks, a single-use launch token
+  exchanged for an HttpOnly SameSite=Strict cookie, CSRF tokens, and a strict
+  Content Security Policy with no inline script or style.
+- OAuth with single-use, session-bound, expiring state; codes exchanged on the
+  server; identity and account eligibility verified before anything is saved.
+- Secrets only in the Keychain, never in the database, logs, API responses
+  or the browser, and never silently falling back to plaintext.
+- Outbound requests restricted to an exact allowlist of HTTPS origins, with
+  redirects refused, timeouts, response size caps and sanitized errors.
+- Uploaded images are verified by magic bytes, decoded only by allowlisted
+  libvips loaders with pixel limits, and every published copy is re-encoded
+  with all metadata (including GPS) removed.
+- AWS Signature V4 for R2 implemented directly on `node:crypto` (no SDK),
+  verified against AWS's published test vectors.
+- Supply chain: exact lockfile, install scripts denied by default, registry
+  signature and provenance checks, and a secret scanner that runs with every check.
+
+**Efficient local storage.** Content-addressed originals, cached derivatives
+pruned when no longer needed, a disk-space guard, and backups that hard-link
+immutable photos so they take no extra space.
+
+**Tested like it matters.** 188 unit and integration tests and 30 Playwright
+browser tests. Platform APIs are exercised against loopback fakes that verify
+what the app sends (including R2 request signatures), so the suite never touches a
+real account. Security checks were mutation-tested: each was deliberately broken
+to confirm a test fails.
+
+## Tech stack
+
+| Layer | Technology |
+|---|---|
+| Language | TypeScript 7 (strict), run directly by Node.js 26 type stripping |
+| Server | Fastify 5, Zod 4 validation |
+| Data | SQLite via better-sqlite3 (WAL, versioned checksummed migrations) |
+| Images | sharp / libvips |
+| UI | React 19, Vite 8, hand-written CSS |
+| Platforms | Instagram Graph API (Instagram Login), Pinterest API v5, Cloudflare R2 |
+| macOS | Keychain (`@napi-rs/keyring`), launchd LaunchAgent |
+| Quality | Vitest, Playwright, oxlint, npm audit signatures |
+
+## Project status
+
+Feature-complete for single-photo posts and fully tested against simulated
+platforms. **In progress:** first live posts (awaiting platform app approval),
+multi-photo carousels, and Pinterest Standard API access.
+
+## How it was built
+
+Designed and directed by Madeleine Halle, with Claude Code as an AI pair
+programmer for implementation. Product decisions, security requirements,
+platform and infrastructure setup, and review were human-led.
+
+---
+
+## Running it locally
+
+### Feature status
 
 | Area | Status |
 |---|---|
@@ -107,8 +215,8 @@ refuses it.
   this repository, the database, or the browser.
 - **Live publishing** is off unless `MEDIA_MANAGER_LIVE_PUBLISHING=enabled`,
   which is allowed in production only.
-- Keep this repository private and turn on GitHub secret scanning. A private
-  repository is still not a place to store secrets.
+- Never commit secrets: `npm run check` includes a secret scan, and GitHub
+  secret scanning with push protection should stay enabled on this repository.
 
 ## Backups
 
