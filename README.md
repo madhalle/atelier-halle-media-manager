@@ -26,6 +26,9 @@ posts to Instagram and Pinterest from macOS, without opening the social apps.
 | Token storage and renewal | ✅ Works against test fakes; Keychain verified on this Mac |
 | Pinterest publishing (direct upload, sandbox/standard) | ⚠️ Built and tested against fakes; no live Pin yet |
 | Instagram publishing via R2 media delivery | ⚠️ Built and tested against fakes; no live post yet |
+| R2 "Test connection" (upload, presigned read, delete) | ✅ Works against test fakes; run it in Platform setup to check your real bucket |
+| Backups: daily, before upgrades, manual; verify, export, restore | ✅ Works (tested) |
+| Background service (LaunchAgent) | ⚠️ Built and tested; not yet installed on this Mac |
 
 More documentation:
 - [Architecture decision](docs/adr/0001-architecture.md)
@@ -52,6 +55,8 @@ npm ci              # install exact locked dependencies
 npm run build       # build the web UI into dist/web
 npm start           # start the server (production data directory, port 4870)
 npm run open        # open the running app in your browser (signs this browser in)
+npm run backup      # back up now (see "Backups" below)
+npm run service -- install   # run in the background at login (see "Background service")
 
 npm run typecheck   # strict TypeScript (server + web)
 npm run lint        # oxlint
@@ -98,12 +103,54 @@ refuses it.
   absolute path.
 - **Port:** 4870 by default. Override it with `MEDIA_MANAGER_PORT`. The server
   only ever binds to `127.0.0.1`.
-- **Platform credentials** will live in the macOS Keychain. They never go in
+- **Platform credentials** live in the macOS Keychain. They never go in
   this repository, the database, or the browser.
 - **Live publishing** is off unless `MEDIA_MANAGER_LIVE_PUBLISHING=enabled`,
   which is allowed in production only.
 - Keep this repository private and turn on GitHub secret scanning. A private
   repository is still not a place to store secrets.
+
+## Backups
+
+The server backs up automatically once a day (keeping 7) and just before any
+database upgrade (keeping 3). Each backup is a consistent SQLite snapshot plus
+the photo originals and thumbnails, **hard-linked**: they take no extra disk
+space and still survive deleting the photo from the library. Secrets are never
+in backups; they stay in the Keychain.
+
+```sh
+npm run backup                          # back up now (keeps the last 10 manual ones)
+npm run backup -- list                  # newest first, with the extra space each uses
+npm run backup -- verify <name>         # checksum, integrity check, every photo present
+npm run backup -- export <name> /Volumes/MyDrive   # real copies, verified after copying
+npm run backup -- restore <name or exported folder>
+```
+
+Backups sit on the same disk as the library, so they protect against
+mistakes and a bad upgrade, not a failed disk: export to another drive, or let
+Time Machine include `~/Library/Application Support/AtelierHalleMediaManager`.
+
+**Restore** needs the app stopped. It verifies the backup, saves the current
+state as a `pre-restore` backup first, and **pauses every account's schedules
+until you review them**, so a post that the older data still lists as pending
+can't be published a second time. Photos added after the backup are removed
+from the library on the next start (they remain in the `pre-restore` backup).
+
+## Background service
+
+```sh
+npm run service -- install          # start at login, restart after a crash (live publishing off)
+npm run service -- install --live   # the same, with live publishing on
+npm run service -- status           # running? responding? Keychain usable?
+npm run service -- stop             # stop until next login (or `start`)
+npm run service -- uninstall        # remove; data is untouched
+```
+
+It installs `~/Library/LaunchAgents/com.atelierhalle.media-manager.plist`,
+which runs the server directly (no shell) with the current Node binary pinned.
+Run `install` again after upgrading Node or moving this folder. Output goes to
+`logs/service.log` in the data directory, rotated at 10 MB. Stop a Terminal
+`npm start` first; only one server can use the data directory.
 
 ### Browser tests
 

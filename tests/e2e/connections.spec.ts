@@ -2,7 +2,7 @@
 // and answered with a redirect back to our callback, as the real platform
 // would after the user approves; token exchange goes to loopback fakes.
 import type { Page } from "@playwright/test";
-import { IG_SECRET, PIN_SECRET } from "../fake-providers.ts";
+import { IG_SECRET, PIN_SECRET, R2 } from "../fake-providers.ts";
 import { createAccountsViaApi, expect, test } from "./server.ts";
 
 async function setUpPlatforms(page: Page) {
@@ -93,4 +93,22 @@ test("connects Pinterest and disconnects with a clear follow-up", async ({ page,
   await page.getByRole("dialog").getByRole("button", { name: "Disconnect" }).click();
   await expect(page.locator("main")).toContainText("doesn't let apps revoke their own access");
   await expect(page.locator("main")).toContainText("Disconnected");
+});
+
+test("tests the R2 connection from Platform setup without showing the secret", async ({ page, server, providers }) => {
+  await server.signIn(page);
+  await page.getByRole("button", { name: "Platform setup" }).click();
+  const dialog = page.getByRole("dialog", { name: "Platform setup" });
+  const r2 = dialog.locator("form").filter({ hasText: "Cloudflare R2" });
+  await expect(r2.getByRole("button", { name: "Test connection" })).toHaveCount(0);
+  await r2.getByLabel("Cloudflare account ID").fill(R2.accountId);
+  await r2.getByLabel("Bucket name").fill(R2.bucket);
+  await r2.getByLabel("Access key ID").fill(R2.accessKeyId);
+  await r2.getByLabel("Secret access key").fill(R2.secretAccessKey);
+  await r2.getByRole("button", { name: "Save" }).click();
+  await expect(r2).toContainText("· set up");
+  await r2.getByRole("button", { name: "Test connection" }).click();
+  await expect(r2.getByRole("status")).toContainText("Connection works");
+  expect(providers.state.r2.objects.size).toBe(0);
+  expect(await page.content()).not.toContain(R2.secretAccessKey);
 });

@@ -339,6 +339,9 @@ export const updatePlatformSetup = (patch: Record<string, Record<string, string 
 export const clearPlatformSetup = (kind: "instagram" | "pinterest" | "r2") =>
   request<{ config: PlatformSetup["config"] }>("DELETE", `/api/platforms/${kind}`).then((r) => r.config);
 
+/** Uploads, reads back and deletes a tiny test object in the R2 bucket. */
+export const testR2 = () => request<{ ok: true }>("POST", "/api/platforms/r2/test", {});
+
 export const startConnect = (accountId: string) =>
   request<{ authorizeUrl: string }>("POST", `/api/accounts/${accountId}/connect`, {}).then((r) => r.authorizeUrl);
 export const disconnectAccount = (accountId: string) =>

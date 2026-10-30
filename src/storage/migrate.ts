@@ -76,3 +76,11 @@ export function migrate(db: Db, migrations = loadMigrations()): number[] {
   }
   return ran;
 }
+
+/** Migrations not yet applied to an existing database (0 for a brand-new one). */
+export function pendingMigrations(db: Db, migrations = loadMigrations()): number {
+  const table = db.prepare("SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'schema_migrations'").get();
+  if (!table) return 0;
+  const applied = (db.prepare("SELECT COUNT(*) AS n FROM schema_migrations").get() as { n: number }).n;
+  return Math.max(0, migrations.length - applied);
+}

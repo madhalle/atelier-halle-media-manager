@@ -2,7 +2,13 @@
 // sanitized response shapes from the official docs. They record requests and
 // assert what our code sends (secrets in the right place, signatures valid).
 import { createServer, type IncomingMessage, type Server } from "node:http";
-import { canonicalRequest, stringToSign } from "../src/delivery/sigv4.ts";
+import { canonicalRequest, presignUrl, stringToSign } from "../src/delivery/sigv4.ts";
+
+/** "20261030T161704Z" → Date. */
+function parseAmzDate(s: string): Date {
+  const m = /^(\d{4})(\d{2})(\d{2})T(\d{2})(\d{2})(\d{2})Z$/.exec(s);
+  return m ? new Date(Date.UTC(+m[1]!, +m[2]! - 1, +m[3]!, +m[4]!, +m[5]!, +m[6]!)) : new Date(NaN);
+}
 import { createHmac } from "node:crypto";
 import type { Endpoints } from "../src/platforms/http.ts";
 
@@ -148,6 +154,23 @@ export async function startFakeProviders(): Promise<FakeProviders> {
 
   // Verifies SigV4 exactly as R2 would, using the known secret.
   const r2 = await serve("r2", log, (r) => {
+    if (r.method === "GET" && r.query.has("X-Amz-Signature")) {
+      // Presigned GET: re-sign the same request with the known secret and compare.
+      const signed = presignUrl(
+        { accessKeyId: R2.accessKeyId, secretAccessKey: R2.secretAccessKey },
+        { region: "auto", service: "s3" },
+        "GET",
+        new URL(`http://${r.headers.host}${r.path}`),
+        Number(r.query.get("X-Amz-Expires")),
+        parseAmzDate(r.query.get("X-Amz-Date") ?? ""),
+      );
+      if (signed.searchParams.get("X-Amz-Signature") !== r.query.get("X-Amz-Signature")) {
+        state.r2.badSignatures++;
+        return { status: 403 };
+      }
+      const obj = state.r2.objects.get(r.path);
+      return obj === undefined ? { status: 404 } : { status: 200, json: JSON.parse(obj) as unknown };
+    }
     const auth = r.headers.authorization;
     if (!auth) return { status: 403 };
     const m = /Credential=([^/]+)\/(\d{8})\/auto\/s3\/aws4_request, SignedHeaders=([^,]+), Signature=([0-9a-f]{64})/.exec(auth);

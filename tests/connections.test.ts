@@ -76,6 +76,42 @@ describe("platform setup", () => {
     expect([...store.dump().keys()].sort()).toEqual(["app:instagram:client_secret", "app:pinterest:client_secret", "app:r2:secret_access_key"]);
   });
 
+  it("tests R2 end to end (upload, presigned read, delete) and leaves nothing behind", async () => {
+    await setupApps();
+    const res = await call("POST", "/api/platforms/r2/test", {});
+    expect(res.statusCode).toBe(200);
+    expect(res.json()).toEqual({ ok: true });
+    const methods = fakes.calls("r2").map((c) => c.method);
+    expect(methods).toEqual(["PUT", "GET", "DELETE"]);
+    const get = fakes.calls("r2").find((c) => c.method === "GET")!;
+    expect(get.headers.authorization).toBeUndefined(); // read through the presigned link only
+    expect(get.query.get("X-Amz-Expires")).toBe("60");
+    expect(fakes.state.r2.objects.size).toBe(0);
+    expect(fakes.state.r2.badSignatures).toBe(0);
+    expect(res.body).not.toContain(R2.secretAccessKey);
+  });
+
+  it("explains a refused R2 key without leaking it, and needs a session and CSRF token", async () => {
+    expect(await call("PATCH", "/api/platforms", { r2: { accountId: R2.accountId, bucket: R2.bucket, accessKeyId: R2.accessKeyId, secretAccessKey: "WrongSecret0123456789abc" } })).toMatchObject({ statusCode: 200 });
+    const res = await call("POST", "/api/platforms/r2/test", {});
+    expect(res.statusCode).toBe(409);
+    expect(res.json().message).toMatch(/refused the access key/);
+    expect(res.body).not.toContain("WrongSecret");
+    expect(fakes.calls("r2").map((c) => c.method)).toEqual(["PUT"]);
+
+    const noCsrf = await t.app.inject({ method: "POST", url: "/api/platforms/r2/test", headers: sameOrigin(t.config.port, { cookie: auth.cookie }), payload: {} });
+    expect(noCsrf.statusCode).toBe(403);
+    const noSession = await t.app.inject({ method: "POST", url: "/api/platforms/r2/test", headers: sameOrigin(t.config.port), payload: {} });
+    expect(noSession.statusCode).toBe(401);
+  });
+
+  it("explains that R2 isn't set up yet", async () => {
+    const res = await call("POST", "/api/platforms/r2/test", {});
+    expect(res.statusCode).toBe(409);
+    expect(res.json().message).toMatch(/isn't set up/);
+    expect(fakes.calls("r2")).toHaveLength(0);
+  });
+
   it("validates input and can remove a platform's setup", async () => {
     expect((await call("PATCH", "/api/platforms", { instagram: { clientId: "not-a-number" } })).statusCode).toBe(400);
     expect((await call("PATCH", "/api/platforms", { instagram: { clientSecret: "short" } })).statusCode).toBe(400);

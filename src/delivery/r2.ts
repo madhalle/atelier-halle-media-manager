@@ -51,6 +51,50 @@ export function createR2Stager(deps: { http: HttpClient; endpoints: Endpoints; c
       return { key, url: signed.toString() };
     },
 
+    /**
+     * Checks the saved settings end to end without publishing anything:
+     * uploads a tiny object, reads it back through a presigned link (as
+     * Instagram would), then deletes it. Each step fails with its own message.
+     */
+    async selfTest(): Promise<void> {
+      const c = await creds();
+      const signer = { accessKeyId: c.accessKeyId, secretAccessKey: c.secretAccessKey };
+      const nonce = randomUUID();
+      const body = Buffer.from(JSON.stringify({ check: nonce }));
+      const url = objectUrl(c, `staging/connection-test-${nonce}.json`);
+
+      const putHeaders = signHeaders(signer, SCOPE, { method: "PUT", url, headers: { "content-type": "application/json" }, payloadHash: sha256Hex(body) }, deps.now());
+      const put = await send(deps.http, { method: "PUT", url, headers: putHeaders, body, timeoutMs: 30_000 });
+      if (put.status !== 200) {
+        const why =
+          put.status === 403
+            ? "Cloudflare refused the access key. Check the access key ID and secret, and that the token has Object Read & Write on this bucket."
+            : put.status === 404
+              ? "Cloudflare couldn't find the bucket. Check the account ID and bucket name."
+              : `Cloudflare answered HTTP ${put.status}.`;
+        throw new PlatformError("permanent", `r2_test_put_${put.status}`, `Upload failed. ${why}`);
+      }
+
+      let readError: PlatformError | null = null;
+      const signed = presignUrl(signer, SCOPE, "GET", url, 60, deps.now());
+      const get = await send(deps.http, { method: "GET", url: signed, timeoutMs: 30_000 }).catch((err: unknown) => {
+        if (err instanceof PlatformError) return err;
+        throw err;
+      });
+      if (get instanceof PlatformError) readError = get;
+      else if (get.status !== 200 || (get.json as { check?: unknown } | null)?.check !== nonce) {
+        readError = new PlatformError("permanent", `r2_test_get_${get.status}`, `Uploaded, but reading it back through a temporary link failed (HTTP ${get.status}).`);
+      }
+
+      // Always clean up, even when reading back failed.
+      const delHeaders = signHeaders(signer, SCOPE, { method: "DELETE", url, payloadHash: EMPTY_SHA256 }, deps.now());
+      const del = await send(deps.http, { method: "DELETE", url, headers: delHeaders });
+      if (readError) throw readError;
+      if (del.status !== 204 && del.status !== 200) {
+        throw new PlatformError("permanent", `r2_test_delete_${del.status}`, `Uploaded and read back, but deleting failed (HTTP ${del.status}). The token needs Object Read & Write.`);
+      }
+    },
+
     /** Best effort: the bucket's lifecycle rule removes anything left behind. */
     async remove(key: string): Promise<void> {
       const c = await creds();

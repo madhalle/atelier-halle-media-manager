@@ -5,6 +5,7 @@ import { z } from "zod";
 import { PLATFORMS } from "../../domain/accounts.ts";
 import { DomainError } from "../../domain/errors.ts";
 import { PlatformError } from "../../domain/publishing.ts";
+import type { R2Stager } from "../../delivery/r2.ts";
 import type { ConnectionService } from "../../platforms/connect.ts";
 import type { PinterestAdapter } from "../../platforms/pinterest.ts";
 import type { AccountsRepo } from "../../storage/accounts-repo.ts";
@@ -27,6 +28,7 @@ export interface ConnectionRouteDeps {
   config: PlatformConfig;
   connections: ConnectionService;
   pinterest: PinterestAdapter;
+  r2: R2Stager;
   keychainStatus: () => { ok: boolean; reason: string | null; kind: "keychain" | "memory" };
   livePublishing: boolean;
   view: (postId: string) => unknown;
@@ -52,6 +54,17 @@ export function registerConnectionRoutes(api: FastifyInstance, d: ConnectionRout
   api.delete("/platforms/:kind", async (req) => {
     const { kind } = KindParams.parse(req.params);
     return { config: await d.config.clear(kind) };
+  });
+
+  // Upload, read back and delete a tiny object. Never touches Instagram.
+  api.post("/platforms/r2/test", async () => {
+    try {
+      await d.r2.selfTest();
+    } catch (err) {
+      if (err instanceof PlatformError) throw new DomainError("invalid_state", err.safeMessage);
+      throw err;
+    }
+    return { ok: true };
   });
 
   api.post("/accounts/:id/connect", async (req) => {

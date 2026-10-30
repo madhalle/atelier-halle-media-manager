@@ -13,13 +13,16 @@ import { createPostsRepo } from "../storage/posts-repo.ts";
 import { createScheduleRepo } from "../storage/schedule-repo.ts";
 import { dataPaths, prepareDataDir } from "../storage/data-dir.ts";
 import { openDatabase } from "../storage/db.ts";
-import { migrate } from "../storage/migrate.ts";
+import { createBackup, latestBackup } from "../storage/backup.ts";
+import { migrate, pendingMigrations } from "../storage/migrate.ts";
 import { buildApp } from "./app.ts";
 import { loadConfig } from "./config.ts";
+import { rotateServiceLog, SERVICE_LOG } from "./launch-agent.ts";
 import { launchUrl, removeLaunchFile, writeLaunchFile } from "./launch.ts";
 import { createSessionStore } from "./sessions.ts";
 
 const LAUNCH_ROTATE_MS = 5 * 60_000;
+const DAILY_BACKUP_MS = 24 * 60 * 60_000;
 
 async function main(): Promise<void> {
   // Everything this process creates (database, WAL, media, logs) is owner-only.
@@ -29,9 +32,11 @@ async function main(): Promise<void> {
   const releaseLock = acquireInstanceLock(join(paths.root, "server.lock"));
 
   const db = openDatabase(paths.database);
+  const pkg = JSON.parse(readFileSync(resolve(import.meta.dirname, "..", "..", "package.json"), "utf8")) as { version: string };
+  // Upgrading an existing database is the riskiest moment; keep a copy from just before it.
+  if (pendingMigrations(db) > 0) await createBackup(db, paths, { reason: "pre-migration", appVersion: pkg.version });
   migrate(db);
 
-  const pkg = JSON.parse(readFileSync(resolve(import.meta.dirname, "..", "..", "package.json"), "utf8")) as { version: string };
   const sessions = createSessionStore();
   const publishLaunchLink = () => writeLaunchFile(paths.launchFile, launchUrl(config.port, sessions.mintLaunchToken()));
 
@@ -70,7 +75,8 @@ async function main(): Promise<void> {
     services,
     keychainStatus: () => keychain,
   });
-  if (!keychain.ok) app.log.warn("macOS Keychain unavailable; connected accounts can't publish until it's accessible");
+  if (keychain.ok) app.log.info({ keychain: credentials.kind }, "keychain check passed");
+  else app.log.warn("macOS Keychain unavailable; connected accounts can't publish until it's accessible");
 
   let shuttingDown = false;
   const shutdown = async (signal: string) => {
@@ -92,6 +98,13 @@ async function main(): Promise<void> {
   const fakes = { instagram: createFakePlatform("instagram"), pinterest: createFakePlatform("pinterest") };
   const adapters: AdapterRegistry = config.fakePlatforms ? (p) => fakes[p] : services.registry(config.livePublishing);
   let lastRenewal = 0;
+  let lastBackupCheck = 0;
+  const dailyBackup = async () => {
+    const latest = await latestBackup(paths, "daily");
+    if (latest && Date.now() - Date.parse(latest.createdAt) < DAILY_BACKUP_MS) return;
+    const m = await createBackup(db, paths, { reason: "daily", appVersion: pkg.version });
+    app.log.info({ backup: m.id, files: m.mediaFiles.length }, "daily backup created");
+  };
   const scheduler = startScheduler({
     accounts,
     posts,
@@ -103,6 +116,11 @@ async function main(): Promise<void> {
     intervalMs: config.schedulerIntervalMs,
     // Hourly: re-check the Keychain and renew platform tokens before they expire.
     onTick: async () => {
+      if (Date.now() - lastBackupCheck >= 60 * 60_000) {
+        lastBackupCheck = Date.now();
+        await dailyBackup().catch((err: unknown) => app.log.error({ err }, "daily backup failed"));
+        await rotateServiceLog(join(paths.logs, SERVICE_LOG)).catch((err: unknown) => app.log.error({ err }, "log rotation failed"));
+      }
       if (Date.now() - lastRenewal < 60 * 60_000) return;
       lastRenewal = Date.now();
       await checkKeychain();

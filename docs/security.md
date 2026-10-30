@@ -240,3 +240,28 @@ The SQLite database is not separately encrypted.
   - that platform's developer app is set up.
 - Otherwise due posts are marked "not published". Simulated platforms are
   refused in production, and tests point at loopback fakes.
+
+## Backups
+
+- Backups live in the owner-only data directory (`backups/`, mode 0700). The
+  database snapshot and manifest are read-only (0400).
+- They never contain secrets: tokens and app secrets stay in the Keychain;
+  the database holds only credential references.
+- Restoring checks a SHA-256 of the database, SQLite's integrity check, the
+  schema version, and that every photo file is present. Backup names are
+  validated, so a crafted name can't reach outside the backups folder.
+- After a restore every account's schedules need review before anything
+  publishes, preventing duplicate posts from stale data.
+- Exports are plain copies: protect the destination drive accordingly (photos
+  and captions, but no credentials).
+
+## Background service
+
+- A per-user LaunchAgent in the login session (not a root daemon), so the
+  login Keychain is available and nothing runs with elevated privileges.
+- It runs the pinned Node binary on `src/server/main.ts` directly, with
+  `PATH=/usr/bin:/bin`, umask 077, and only the documented environment
+  variables. Values written into the plist are XML-escaped.
+- Live publishing is only on when installed with `--live`; `status` reports it.
+- The server still binds to 127.0.0.1 only; running in the background changes
+  nothing about network exposure.

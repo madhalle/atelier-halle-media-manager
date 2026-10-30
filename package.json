@@ -12,6 +12,8 @@
     "build": "vite build",
     "start": "node src/server/main.ts",
     "open": "node scripts/open.ts",
+    "backup": "node scripts/backup.ts",
+    "service": "node scripts/service.ts",
     "dev": "MEDIA_MANAGER_ENV=development node --watch-path=src --watch-path=migrations src/server/main.ts",
     "dev:web": "vite build --watch --mode development",
     "typecheck": "tsc -p tsconfig.json && tsc -p src/web/tsconfig.json",

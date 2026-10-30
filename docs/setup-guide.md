@@ -27,8 +27,11 @@ Each Pinterest account you'll post to should be a **business** account.
 
 1. Sign in to developers.pinterest.com with a business account, accept the
    Developer Terms, create an app, and request **Trial** access.
-   - Pinterest needs an accessible **privacy policy URL** for your app, which
-     is still to decide. I can draft one.
+   - Privacy policy URL: `https://madhalle.github.io/atelierhalle-privacy/`
+     (source: `docs/privacy-policy.md`). Pinterest requires the company name
+     in the URL.
+   - Developer purpose: **Personal API access**. Reads Pins and/or Boards:
+     **Yes, mine**.
 2. Under **Configure › Redirect URIs**, add exactly
    `http://localhost:4870/oauth/pinterest/callback`.
 3. In **Platform setup**, enter the **Pinterest app ID** and **app secret**.
@@ -49,6 +52,8 @@ Each Pinterest account you'll post to should be a **business** account.
    one bucket.
 5. In **Platform setup**, enter the account ID (32 hex characters), the bucket
    name, the access key ID and the secret access key.
+6. Click **Test connection**. The app uploads a tiny file, reads it back
+   through a 60-second link (as Instagram would), and deletes it.
 
 ## 4. Connect accounts
 

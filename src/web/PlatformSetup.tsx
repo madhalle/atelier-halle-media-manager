@@ -1,7 +1,7 @@
 // Developer-app setup for Instagram, Pinterest and R2 media delivery.
 // Secret fields are write-only: they are never pre-filled or shown again.
 import { useEffect, useId, useState, type FormEvent, type ReactNode } from "react";
-import { ApiError, clearPlatformSetup, getPlatformSetup, updatePlatformSetup, type PlatformSetup } from "./api.ts";
+import { ApiError, clearPlatformSetup, getPlatformSetup, testR2, updatePlatformSetup, type PlatformSetup } from "./api.ts";
 import { Modal, useGuard } from "./dialogs.tsx";
 
 export function PlatformSetupDialog({ open, onClose, onChanged }: { open: boolean; onClose: () => void; onChanged: () => void }) {
@@ -81,6 +81,11 @@ function SetupBody({ onClose, onChanged }: { onClose: () => void; onChanged: () 
             day. Each photo is uploaded only while Instagram fetches it, then deleted.
           </p>
         }
+        test={
+          c.r2.secretSaved
+            ? { label: "Test connection", busyText: "Testing…", okText: "Connection works: uploaded, read back and deleted a test file.", run: testR2 }
+            : undefined
+        }
       />
       <div className="dialog-actions">
         <button type="button" onClick={onClose}>
@@ -102,6 +107,13 @@ function RedirectNote({ uri, where }: { uri: string; where: string }) {
   );
 }
 
+interface SectionTest {
+  label: string;
+  busyText: string;
+  okText: string;
+  run: () => Promise<unknown>;
+}
+
 interface Field {
   name: string;
   label: string;
@@ -119,6 +131,7 @@ function Section({
   saved,
   onSaved,
   footer,
+  test,
 }: {
   title: string;
   kind: "instagram" | "pinterest" | "r2";
@@ -126,6 +139,7 @@ function Section({
   saved: boolean;
   onSaved: () => void;
   footer?: ReactNode;
+  test?: SectionTest | undefined;
 }) {
   const { confirm } = useGuard();
   const initial = Object.fromEntries(fields.map((f) => [f.name, f.secret ? "" : (f.value ?? "")]));
@@ -155,6 +169,20 @@ function Section({
       onSaved();
     } catch (err) {
       setStatus({ tone: "error", text: err instanceof ApiError ? err.message : "Couldn't save." });
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const runTest = async () => {
+    if (!test) return;
+    setBusy(true);
+    setStatus({ tone: "ok", text: test.busyText });
+    try {
+      await test.run();
+      setStatus({ tone: "ok", text: test.okText });
+    } catch (err) {
+      setStatus({ tone: "error", text: err instanceof ApiError ? err.message : "The test couldn't run." });
     } finally {
       setBusy(false);
     }
@@ -216,6 +244,11 @@ function Section({
         <button type="submit" className="primary" disabled={busy}>
           Save
         </button>
+        {test && (
+          <button type="button" onClick={() => void runTest()} disabled={busy}>
+            {test.label}
+          </button>
+        )}
         {saved && (
           <button type="button" className="danger" onClick={() => void remove()}>
             Remove…
