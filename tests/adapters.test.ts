@@ -1,5 +1,5 @@
 // Real platform adapters and token handling, exercised against loopback fakes.
-import { writeFileSync } from "node:fs";
+import { readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { PlatformError } from "../src/domain/publishing.ts";
@@ -11,12 +11,14 @@ import { IG_SECRET, PIN_SECRET, R2, startFakeProviders, type FakeProviders } fro
 import { jpeg } from "./images.ts";
 import { connectedAccount, createEnv, scheduledPost, type Env } from "./scheduling-helpers.ts";
 import { processNext } from "../src/scheduler/worker.ts";
+import { createInstagramAdapter } from "../src/platforms/instagram.ts";
 
 let env: Env;
 let fakes: FakeProviders;
 let store: ReturnType<typeof createMemoryStore>;
 let svc: PlatformServices;
 let photoFile: string;
+let photoFiles: string[];
 
 const DAY = 24 * 3600_000;
 
@@ -40,6 +42,12 @@ beforeEach(async () => {
   });
   photoFile = join(env.dir.path, "derivative.jpg");
   writeFileSync(photoFile, await jpeg(1080, 1080));
+  photoFiles = [];
+  for (let i = 0; i < 3; i++) {
+    const f = join(env.dir.path, `carousel-${i}.jpg`);
+    writeFileSync(f, await jpeg(1080, 1080, { color: ["#aa3355", "#33aa55", "#3355aa"][i]! }));
+    photoFiles.push(f);
+  }
 });
 afterEach(async () => {
   await fakes.close();
@@ -69,7 +77,7 @@ function job(over: Partial<PublishJob> = {}): PublishJob {
     pinDescription: "Summer linen",
     pinLink: "https://atelierhalle.com/linen",
     pinBoardId: "1099652335",
-    derivative: { file: photoFile, sha256: "x" },
+    media: [{ file: photoFile, sha256: "x" }],
     containerId: null,
     ...over,
   };
@@ -204,6 +212,75 @@ describe("Instagram adapter with R2 delivery", () => {
   it("explains missing media delivery setup instead of failing silently", async () => {
     await svc.config.clear("r2");
     await expect(svc.instagram.stage(job())).rejects.toSatisfy((e: unknown) => e instanceof PlatformError && e.kind === "permanent" && /Cloudflare R2/.test(e.safeMessage));
+  });
+});
+
+describe("carousels", () => {
+  beforeEach(async () => {
+    await svc.tokens.save("cred:test-1", tokenSet());
+  });
+  const carouselJob = (over: Partial<PublishJob> = {}) => job({ media: photoFiles.map((file) => ({ file, sha256: "x" })), ...over });
+  /** An adapter whose waits advance the fake clock instead of sleeping. */
+  const igWithClock = () =>
+    createInstagramAdapter({ http: svc.http, endpoints: svc.endpoints, tokens: svc.tokens, stager: svc.stager, now: env.clock.now, sleep: async (ms) => env.clock.advance(ms) });
+
+  it("Instagram: one item per photo in order, then a captioned carousel, with every staged photo removed", async () => {
+    const { containerId } = await svc.instagram.stage(carouselJob());
+    expect(containerId).toBe("17889455560051444");
+    const creates = fakes.calls("ig-graph", `/v26.0/${fakes.state.ig.userId}/media`).filter((c) => c.method === "POST").map((c) => new URLSearchParams(c.body));
+    expect(creates).toHaveLength(4);
+    const items = creates.slice(0, 3);
+    for (const f of items) {
+      expect(f.get("is_carousel_item")).toBe("true");
+      expect(f.has("caption")).toBe(false);
+      expect(new URL(f.get("image_url")!).searchParams.get("X-Amz-Expires")).toBe("900");
+    }
+    // Each item points at a different staged photo, in post order.
+    const uploaded = fakes.calls("r2").filter((c) => c.method === "PUT").map((c) => c.path);
+    expect(items.map((f) => new URL(f.get("image_url")!).pathname)).toEqual(uploaded);
+    expect(new Set(fakes.calls("r2").filter((c) => c.method === "PUT").map((c) => c.body)).size).toBe(3);
+
+    const parent = creates[3]!;
+    expect(parent.get("media_type")).toBe("CAROUSEL");
+    expect(parent.get("children")!.split(",")).toEqual([...fakes.state.ig.items.keys()]);
+    expect(parent.get("caption")).toBe("Linen #atelier");
+    expect(parent.has("alt_text")).toBe(false);
+    expect(fakes.state.r2.objects.size).toBe(0);
+    expect(fakes.state.r2.badSignatures).toBe(0);
+
+    expect(await svc.instagram.checkStaged(carouselJob({ containerId }))).toBe("ready");
+    expect(await svc.instagram.commit(carouselJob({ containerId }))).toMatchObject({ remotePostId: "17920238422030506" });
+  });
+
+  it("Instagram: waits while items are processed, then creates the carousel", async () => {
+    fakes.state.ig.itemStatusQueue = ["IN_PROGRESS", "IN_PROGRESS"];
+    const before = env.clock.t;
+    const { containerId } = await igWithClock().stage(carouselJob());
+    expect(containerId).toBe("17889455560051444");
+    expect(env.clock.t - before).toBe(6_000);
+    expect(fakes.state.ig.carousel?.children).toHaveLength(3);
+  });
+
+  it("Instagram: a failed item fails the post permanently and cleans up; slow items retry later", async () => {
+    fakes.state.ig.itemStatusQueue = ["FINISHED", "ERROR"];
+    await expect(igWithClock().stage(carouselJob())).rejects.toMatchObject({ kind: "permanent", code: "carousel_item_error" });
+    expect(fakes.state.r2.objects.size).toBe(0);
+    expect(fakes.state.ig.carousel).toBeNull();
+
+    fakes.state.ig.itemStatusQueue = Array.from({ length: 100 }, () => "IN_PROGRESS");
+    await expect(igWithClock().stage(carouselJob())).rejects.toMatchObject({ kind: "transient", code: "carousel_items_pending" });
+    expect(fakes.state.r2.objects.size).toBe(0);
+    expect(fakes.state.ig.carousel).toBeNull();
+  });
+
+  it("Pinterest: one carousel Pin with every photo, in order", async () => {
+    await svc.tokens.save("cred:test-1", tokenSet({ accessToken: "pina_GOOD", refreshToken: "pinr_X" }));
+    await svc.pinterest.commit(carouselJob({ platform: "pinterest" }));
+    const body = JSON.parse(fakes.calls("pin-sandbox", "/v5/pins")[0]!.body);
+    expect(body.media_source.source_type).toBe("multiple_image_base64");
+    expect(body.media_source.items).toHaveLength(3);
+    expect(body.media_source.items.map((i: { data: string }) => i.data)).toEqual(photoFiles.map((f) => readFileSync(f).toString("base64")));
+    expect(body).toMatchObject({ title: "Linen", description: "Summer linen", alt_text: "A linen dress" });
   });
 });
 

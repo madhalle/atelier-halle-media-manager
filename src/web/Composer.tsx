@@ -8,9 +8,11 @@ import {
   type Board,
   deletePost,
   derivativeUrl,
+  MAX_PHOTOS,
   PLATFORM_ASPECTS,
   PLATFORM_LABEL,
   STATUS_LABEL,
+  setPostMedia,
   updatePost,
   type Account,
   type CropAspect,
@@ -19,6 +21,7 @@ import {
   type PostFields,
 } from "./api.ts";
 import { useDirty, useGuard } from "./dialogs.tsx";
+import { PhotoLibraryDialog } from "./PhotoLibrary.tsx";
 import { SchedulePanel } from "./SchedulePanel.tsx";
 
 const LIMITS = {
@@ -77,7 +80,11 @@ export function Composer({ post, account, defaultTimezone, onNotice, onSaved, on
     post.commitStartedAt === null &&
     post.attentionKind !== "ambiguous";
   const deletable = post.status === "draft" || post.status === "canceled";
-  const item = post.media[0];
+  const count = post.media.length;
+  const carousel = count > 1;
+  const [selected, setSelected] = useState(0);
+  const item = post.media[Math.min(selected, count - 1)];
+  const [picking, setPicking] = useState(false);
 
   const pick = (p: Post): PostFields => ({
     caption: p.caption,
@@ -111,17 +118,70 @@ export function Composer({ post, account, defaultTimezone, onNotice, onSaved, on
   };
   const issuesFor = (field: Issue["field"]) => (fieldDirty[field] ? [] : post.issues.filter((i) => i.field === field));
 
+  const round = (v: number) => Math.round(v * 100) / 100;
+  // A carousel shares one crop shape, so changing it applies to every photo; the position is per photo.
+  const cropPatch = () => {
+    if (!item || !cropDirty) return undefined;
+    const shapeChanged = crop.aspect !== item.cropAspect;
+    return post.media
+      .filter((m) => m.position === item.position || (carousel && shapeChanged))
+      .map((m) =>
+        m.position === item.position
+          ? { position: m.position, cropAspect: crop.aspect, focusX: round(crop.fx), focusY: round(crop.fy) }
+          : { position: m.position, cropAspect: crop.aspect, focusX: m.focusX, focusY: m.focusY },
+      );
+  };
+
+  const select = (i: number) => {
+    const m = post.media[i];
+    if (!m) return;
+    setSelected(i);
+    setCrop({ aspect: m.cropAspect, fx: m.focusX, fy: m.focusY });
+  };
+
+  type PhotoItem = { mediaAssetId: string; cropAspect: CropAspect; focusX: number; focusY: number };
+  const items = (): PhotoItem[] => post.media.map((m) => ({ mediaAssetId: m.asset.id, cropAspect: m.cropAspect, focusX: m.focusX, focusY: m.focusY }));
+
+  /** Add, remove or reorder photos; saved immediately. */
+  const changePhotos = async (next: PhotoItem[], nextSelected: number) => {
+    setSaving(true);
+    setError(null);
+    try {
+      const saved = await setPostMedia(post, next);
+      onSaved(saved);
+      const m = saved.media[Math.min(nextSelected, saved.media.length - 1)]!;
+      setSelected(Math.min(nextSelected, saved.media.length - 1));
+      setCrop({ aspect: m.cropAspect, fx: m.focusX, fy: m.focusY });
+    } catch (err) {
+      setError(err instanceof ApiError ? err.message : "Could not update the photos.");
+    } finally {
+      setSaving(false);
+    }
+  };
+  const move = (i: number, by: -1 | 1) => {
+    const next = items();
+    [next[i], next[i + by]] = [next[i + by]!, next[i]!];
+    void changePhotos(next, i + by);
+  };
+  const removeAt = (i: number) => void changePhotos(items().filter((_, n) => n !== i), Math.max(0, i - 1));
+  const addPhoto = (assetId: string) => {
+    setPicking(false);
+    if (post.media.some((m) => m.asset.id === assetId)) {
+      setError("That photo is already in this post.");
+      return;
+    }
+    // New photos join with the carousel's shape, centred.
+    const shape = post.media[0]?.cropAspect ?? PLATFORM_ASPECTS[platform][0]!;
+    void changePhotos([...items(), { mediaAssetId: assetId, cropAspect: shape, focusX: 0.5, focusY: 0.5 }], count);
+  };
+
   const save = async (e?: FormEvent) => {
     e?.preventDefault();
     if (!dirty) return post;
     setSaving(true);
     setError(null);
     try {
-      const saved = await updatePost(
-        post,
-        fields,
-        item && cropDirty ? [{ position: item.position, cropAspect: crop.aspect, focusX: Math.round(crop.fx * 100) / 100, focusY: Math.round(crop.fy * 100) / 100 }] : undefined,
-      );
+      const saved = await updatePost(post, fields, cropPatch());
       onSaved(saved);
       return saved;
     } catch (err) {
@@ -177,17 +237,31 @@ export function Composer({ post, account, defaultTimezone, onNotice, onSaved, on
 
       <form className="composer-grid" onSubmit={(e) => void save(e)} noValidate>
         <section className="composer-media" aria-labelledby="photo-heading">
-          <h3 id="photo-heading">Photo and crop</h3>
+          <h3 id="photo-heading">{carousel ? `Carousel: ${count} photos` : "Photo and crop"}</h3>
+          <PhotoStrip
+            post={post}
+            selected={Math.min(selected, count - 1)}
+            editable={editable}
+            locked={cropDirty || saving}
+            max={MAX_PHOTOS[platform]}
+            onSelect={select}
+            onMove={move}
+            onRemove={removeAt}
+            onAdd={() => setPicking(true)}
+          />
+          {cropDirty && carousel && <p className="hint">Save the crop before switching or rearranging photos.</p>}
           {item && previewSrc ? (
             <>
               <figure className="preview">
                 <img src={previewSrc} alt={fields.altText || "Preview of the photo as it will be posted"} />
                 <figcaption className="hint">
+                  {carousel && `Photo ${Math.min(selected, count - 1) + 1} of ${count}. `}
                   Exact {PLATFORM_LABEL[platform]} upload: {ASPECT_LABEL[debouncedCrop.aspect]}, colour-corrected, location data removed.
                 </figcaption>
               </figure>
               <fieldset disabled={!editable}>
                 <legend>Crop</legend>
+                {carousel && <p className="hint">Every photo in a carousel uses the same shape. The position is set per photo.</p>}
                 <div className="crop-options">
                   {PLATFORM_ASPECTS[platform].map((a) => (
                     <label key={a} className="radio">
@@ -238,7 +312,11 @@ export function Composer({ post, account, defaultTimezone, onNotice, onSaved, on
                 disabled={!editable}
                 counters={[`${chars(fields.altText)}/${LIMITS.igAlt}`]}
                 over={chars(fields.altText) > LIMITS.igAlt}
-                hint="Describes the photo for people using screen readers."
+                hint={
+                  carousel
+                    ? "Instagram's API doesn't document alt text for carousel photos, so it isn't sent with carousels."
+                    : "Describes the photo for people using screen readers."
+                }
                 issues={issuesFor("altText")}
               />
             </>
@@ -295,10 +373,10 @@ export function Composer({ post, account, defaultTimezone, onNotice, onSaved, on
             {platform === "instagram" ? (
               <p>
                 Location tags, people tags, product tags, music and collaborators aren’t included in this version. Reels, Stories and video
-                aren’t supported. Carousels come later.
+                aren’t supported.
               </p>
             ) : (
-              <p>Board sections, video Pins and multi-image Pins aren’t included in this version.</p>
+              <p>Board sections, video Pins, and per-photo titles or links in carousel Pins aren’t included in this version.</p>
             )}
           </details>
         </section>
@@ -355,8 +433,69 @@ export function Composer({ post, account, defaultTimezone, onNotice, onSaved, on
           )}
         </div>
       </form>
+      <PhotoLibraryDialog open={picking} pickLabel="Add to post" onPick={(m) => addPhoto(m.id)} onClose={() => setPicking(false)} />
       <SchedulePanel post={post} account={account} defaultTimezone={defaultTimezone} dirty={dirty} onChanged={onSaved} onNotice={onNotice} />
     </article>
+  );
+}
+
+function PhotoStrip({
+  post,
+  selected,
+  editable,
+  locked,
+  max,
+  onSelect,
+  onMove,
+  onRemove,
+  onAdd,
+}: {
+  post: Post;
+  selected: number;
+  editable: boolean;
+  locked: boolean;
+  max: number;
+  onSelect: (i: number) => void;
+  onMove: (i: number, by: -1 | 1) => void;
+  onRemove: (i: number) => void;
+  onAdd: () => void;
+}) {
+  const count = post.media.length;
+  if (count <= 1 && !editable) return null;
+  return (
+    <div className="photo-strip">
+      <ol aria-label="Photos in this post">
+        {post.media.map((m, i) => (
+          <li key={`${m.asset.id}-${i}`} className={i === selected ? "selected" : undefined}>
+            <button type="button" className="strip-thumb" aria-pressed={i === selected} disabled={locked && i !== selected} onClick={() => onSelect(i)}>
+              <img src={m.asset.thumbUrl} alt="" />
+              <span className="visually-hidden">
+                Photo {i + 1} of {count}
+                {m.asset.originalFilename ? `: ${m.asset.originalFilename}` : ""}
+              </span>
+            </button>
+            {editable && count > 1 && (
+              <span className="strip-actions">
+                <button type="button" aria-label={`Move photo ${i + 1} earlier`} disabled={locked || i === 0} onClick={() => onMove(i, -1)}>
+                  ←
+                </button>
+                <button type="button" aria-label={`Move photo ${i + 1} later`} disabled={locked || i === count - 1} onClick={() => onMove(i, 1)}>
+                  →
+                </button>
+                <button type="button" aria-label={`Remove photo ${i + 1} from the post`} disabled={locked} onClick={() => onRemove(i)}>
+                  ×
+                </button>
+              </span>
+            )}
+          </li>
+        ))}
+      </ol>
+      {editable && (
+        <button type="button" onClick={onAdd} disabled={locked || count >= max}>
+          {count >= max ? `Maximum ${max} photos` : count === 1 ? "Add photo (carousel)…" : "Add photo…"}
+        </button>
+      )}
+    </div>
   );
 }
 

@@ -174,6 +174,25 @@ response shapes. They haven't been checked against the real APIs.
   `PUBLISHED` means it went out. `FINISHED` means it didn't, but only once 5
   minutes have passed.
 
+## Carousels (implemented 2026-10-31): rules and assumptions
+
+- **Instagram:** 2–20 photos (Content Publishing docs, verified 2026-10-31,
+  "up to 20 images, videos, or a combination"); one item container per photo
+  with `is_carousel_item=true`, then a `CAROUSEL` container with `children`
+  and the caption, then `media_publish`. A carousel counts as one post against
+  the publishing limit. Instagram crops every photo to the first one's shape,
+  so the app requires the same shape for all photos (exact preview).
+- **Pinterest:** carousel Pins take 2–5 images via
+  `media_source.source_type = "multiple_image_base64"` (API v5 OpenAPI
+  schema, verified 2026-10-31). Pin-level title, description, link and alt
+  text apply; per-image titles and links aren't used.
+- **To confirm live:**
+  - Instagram: whether item containers must be `FINISHED` before creating the
+    carousel. The app waits for them (up to 90 s, then retries later), which
+    is safe either way.
+  - Instagram: alt text on carousel items isn't documented, so none is sent.
+  - Pinterest: whether the Trial sandbox accepts carousel Pins.
+
 ## Live verification checklist (in progress)
 
 Each item needs explicit user authorization where it publishes.
@@ -191,9 +210,10 @@ Each item needs explicit user authorization where it publishes.
 - [ ] Instagram: confirm presigned object-store URL is fetchable by Meta (container reaches `FINISHED`, no publish).
 - [ ] Both: try `code_challenge`; record whether `code_verifier` is enforced.
 - [ ] Instagram: one authorized single-image publication.
+- [ ] Instagram: one authorized carousel publication.
 - [ ] Pinterest: register app; Trial approval; confirm loopback redirect.
 - [ ] Pinterest: connect each intended account; confirm no `PINNER_DATA_ACCESS_DENIED`.
-- [ ] Pinterest: sandbox Pin via `image_base64`; then Standard upgrade.
+- [ ] Pinterest: sandbox Pin via `image_base64`, and a carousel Pin; then Standard upgrade.
 - [ ] Pinterest: one authorized public single-image Pin; token refresh; revoke.
 
 ## Sources

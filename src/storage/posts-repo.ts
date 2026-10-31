@@ -6,6 +6,7 @@ import {
   type AttentionKind,
   assertEditable,
   fieldsForCopy,
+  MAX_PHOTOS,
   PLATFORM_ASPECTS,
   type CropAspect,
   type Post,
@@ -53,6 +54,16 @@ interface MediaRow {
   crop_aspect: CropAspect;
   crop_focus_x: number;
   crop_focus_y: number;
+}
+
+/** Upper bound for any platform; per-platform limits are reported as validation issues. */
+const MAX_STORED_PHOTOS = Math.max(...Object.values(MAX_PHOTOS));
+
+export interface MediaItemInput {
+  mediaAssetId: string;
+  cropAspect: CropAspect;
+  focusX: number;
+  focusY: number;
 }
 
 export interface PostPatch {
@@ -137,6 +148,19 @@ export function createPostsRepo(db: Db, accounts: AccountsRepo, now: () => Date 
     return id;
   }
 
+  function checkMedia(items: MediaItemInput[], platform: Account["platform"]): PostMedia[] {
+    if (items.length === 0) throw new DomainError("validation", "A post needs at least one photo.");
+    if (items.length > MAX_STORED_PHOTOS) throw new DomainError("validation", `A post can hold at most ${MAX_STORED_PHOTOS} photos.`);
+    if (new Set(items.map((m) => m.mediaAssetId)).size !== items.length) throw new DomainError("validation", "That photo is already in this post.");
+    return items.map((m, position) => {
+      if (!assetExists.get(m.mediaAssetId)) throw new DomainError("not_found", "Photo not found.");
+      if (!PLATFORM_ASPECTS[platform].allowed.includes(m.cropAspect)) {
+        throw new DomainError("validation", `The ${m.cropAspect} crop isn't available for this platform.`);
+      }
+      return { position, mediaAssetId: m.mediaAssetId, cropAspect: m.cropAspect, focusX: m.focusX, focusY: m.focusY };
+    });
+  }
+
   const EMPTY: PostFields = {
     caption: "",
     altText: "",
@@ -169,13 +193,33 @@ export function createPostsRepo(db: Db, accounts: AccountsRepo, now: () => Date 
       return rows.map((r) => hydrate(r, byPost.get(r.id) ?? []));
     },
 
-    /** New single-photo draft. Unconnected accounts may hold drafts. Never auto-crops. */
-    createDraft(accountId: string, mediaAssetId: string): Post {
+    /** New draft with one photo, or several for a carousel. Unconnected accounts may hold drafts. Never auto-crops. */
+    createDraft(accountId: string, mediaAssetIds: string | string[]): Post {
+      const ids = typeof mediaAssetIds === "string" ? [mediaAssetIds] : mediaAssetIds;
       return db.transaction(() => {
         const account = requireActiveAccount(accountId);
-        if (!assetExists.get(mediaAssetId)) throw new DomainError("not_found", "Photo not found.");
-        const media: PostMedia = { position: 0, mediaAssetId, cropAspect: PLATFORM_ASPECTS[account.platform].default, focusX: 0.5, focusY: 0.5 };
-        return get(insert(accountId, EMPTY, [media], null));
+        const aspect = PLATFORM_ASPECTS[account.platform].default;
+        const media = checkMedia(ids.map((mediaAssetId) => ({ mediaAssetId, cropAspect: aspect, focusX: 0.5, focusY: 0.5 })), account.platform);
+        return get(insert(accountId, EMPTY, media, null));
+      })();
+    },
+
+    /**
+     * Replaces the post's photos in the given order: adding, removing and
+     * reordering are all this one atomic operation.
+     */
+    setMedia(id: string, expectedRevision: number, items: MediaItemInput[]): Post {
+      return db.transaction(() => {
+        const post = get(id);
+        if (post.revision !== expectedRevision) {
+          throw new DomainError("stale_revision", "This post changed in another window. Reload and try again.");
+        }
+        assertEditable(post);
+        const media = checkMedia(items, accounts.get(post.accountId).platform);
+        db.prepare("DELETE FROM post_media WHERE post_id = ?").run(id);
+        for (const m of media) insertMedia.run(id, m.position, m.mediaAssetId, m.cropAspect, m.focusX, m.focusY);
+        db.prepare("UPDATE posts SET revision = revision + 1, updated_at = ? WHERE id = ?").run(iso(), id);
+        return get(id);
       })();
     },
 

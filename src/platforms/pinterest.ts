@@ -1,4 +1,4 @@
-// Pinterest API v5 adapter: standard single-image Pins via direct base64 upload
+// Pinterest API v5 adapter: single-image and carousel Pins via direct base64 upload
 // (no public media URL needed). Trial apps publish to the sandbox, where Pins
 // are visible only to the developer; Standard access publishes publicly.
 import { readFile } from "node:fs/promises";
@@ -50,10 +50,14 @@ export function createPinterestAdapter(deps: { http: HttpClient; endpoints: Endp
 
     async commit(job) {
       if (!job.pinBoardId) throw new PlatformError("permanent", "no_board", "Choose a board for this Pin.");
-      const data = (await readFile(job.derivative.file)).toString("base64");
+      const images = await Promise.all(job.media.map(async (m) => (await readFile(m.file)).toString("base64")));
       const body: Record<string, unknown> = {
         board_id: job.pinBoardId,
-        media_source: { source_type: "image_base64", content_type: "image/jpeg", data },
+        media_source:
+          images.length === 1
+            ? { source_type: "image_base64", content_type: "image/jpeg", data: images[0] }
+            : // Carousel Pin: 2–5 images.
+              { source_type: "multiple_image_base64", items: images.map((data) => ({ content_type: "image/jpeg", data })) },
       };
       if (job.pinTitle) body.title = job.pinTitle;
       if (job.pinDescription) body.description = job.pinDescription;

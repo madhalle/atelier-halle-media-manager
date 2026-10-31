@@ -174,3 +174,35 @@ test("captions are rendered as text, never as markup", async ({ page, server }) 
   expect(await page.evaluate(() => (globalThis as { __pwned?: number }).__pwned)).toBeUndefined();
   await expect(page.locator(".post-card b")).toHaveCount(0);
 });
+
+test("builds an Instagram carousel: add, shared crop shape, reorder and remove", async ({ page, server }) => {
+  await server.signIn(page);
+  await createAccountsViaApi(page, [{ platform: "instagram", displayName: "IG" }]);
+  await page.reload();
+  await newPostFromUpload(page, { name: "wide.jpg", buffer: await jpeg(1600, 900, { color: "#705030" }) });
+
+  await page.getByRole("button", { name: "Add photo (carousel)…" }).click();
+  await uploadInLibrary(page, [{ name: "square.jpg", mimeType: "image/jpeg", buffer: await jpeg(1000, 1000, { color: "#305070" }) }]);
+  await page.getByRole("button", { name: "Add to post: square.jpg" }).click();
+  await expect(page.getByRole("heading", { name: "Carousel: 2 photos" })).toBeVisible();
+  await expect(page.locator(".composer-checks")).toContainText("Every photo in a carousel needs the same shape");
+
+  // One shape for the whole carousel.
+  await page.getByRole("radio", { name: "Square 1:1" }).check();
+  await page.getByRole("button", { name: "Save draft" }).click();
+  await expect(page.getByText("Nothing blocks this post.")).toBeVisible();
+  await page.getByRole("button", { name: /Photo 2 of 2/ }).click();
+  await expect(page.getByRole("radio", { name: "Square 1:1" })).toBeChecked();
+  expect(await previewLoaded(page)).toMatchObject({ w: 1000, h: 1000 });
+
+  await page.getByRole("button", { name: "Move photo 2 earlier" }).click();
+  await expect(page.getByRole("button", { name: /Photo 1 of 2: square\.jpg/ })).toBeVisible();
+
+  await page.getByRole("button", { name: "← Back to posts" }).click();
+  await expect(page.locator(".post-card")).toContainText("Carousel · 2 photos");
+  await page.locator(".post-card").click();
+
+  await page.getByRole("button", { name: "Remove photo 2 from the post" }).click();
+  await expect(page.getByRole("heading", { name: "Photo and crop" })).toBeVisible();
+  await expect(page.getByRole("button", { name: /Photo 1 of 1: square\.jpg/ })).toBeVisible();
+});

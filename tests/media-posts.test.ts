@@ -374,3 +374,92 @@ describe("posts", () => {
     expect(existsSync(join(mediaDir(), "derivatives", photo.id))).toBe(true);
   });
 });
+
+describe("carousels", () => {
+  const put = (id: string, payload: unknown) => t.app.inject({ method: "PUT", url: `/api/posts/${id}/media`, headers: headers(), payload: payload as object });
+  const item = (mediaAssetId: string, cropAspect = "1:1") => ({ mediaAssetId, cropAspect, focusX: 0.5, focusY: 0.5 });
+  const photos = async (n: number) => {
+    const out = [];
+    for (let i = 0; i < n; i++) out.push(await uploadOne(await jpeg(1200, 900, { color: `#${(i * 40 + 20).toString(16).padStart(2, "0")}3355` }), `p${i}.jpg`));
+    return out;
+  };
+  const messages = (post: { issues: { message: string; severity: string }[] }) => post.issues.filter((i) => i.severity === "blocking").map((i) => i.message);
+
+  it("creates a carousel draft from several photos, in order", async () => {
+    const ig = await account("instagram", "IG");
+    const [a, b, c] = await photos(3);
+    const res = await call("POST", `/api/accounts/${ig.id}/posts`, { mediaAssetIds: [b!.id, a!.id, c!.id] });
+    expect(res.statusCode).toBe(201);
+    const post = res.json().post;
+    expect(post.media.map((m: { position: number; mediaAssetId: string }) => [m.position, m.mediaAssetId])).toEqual([
+      [0, b!.id],
+      [1, a!.id],
+      [2, c!.id],
+    ]);
+    // Same-shaped photos with the default crop are a valid carousel.
+    expect(messages(post).filter((m) => /shape|carousel/.test(m))).toEqual([]);
+  });
+
+  it("adds, removes and reorders photos atomically, checking revisions and ownership of the list", async () => {
+    const ig = await account("instagram", "IG");
+    const [a, b, c] = await photos(3);
+    let post = (await call("POST", `/api/accounts/${ig.id}/posts`, { mediaAssetId: a!.id })).json().post;
+
+    let res = await put(post.id, { revision: post.revision, media: [item(a!.id), item(b!.id), item(c!.id)] });
+    expect(res.statusCode).toBe(200);
+    post = res.json().post;
+    expect(post.media.map((m: { mediaAssetId: string }) => m.mediaAssetId)).toEqual([a!.id, b!.id, c!.id]);
+
+    res = await put(post.id, { revision: post.revision, media: [item(c!.id), item(a!.id)] });
+    post = res.json().post;
+    expect(post.media.map((m: { position: number; mediaAssetId: string }) => [m.position, m.mediaAssetId])).toEqual([
+      [0, c!.id],
+      [1, a!.id],
+    ]);
+
+    expect((await put(post.id, { revision: post.revision - 1, media: [item(a!.id)] })).statusCode).toBe(409);
+    expect((await put(post.id, { revision: post.revision, media: [] })).statusCode).toBe(400);
+    expect((await put(post.id, { revision: post.revision, media: [item(a!.id), item(a!.id)] })).json().message).toMatch(/already in this post/);
+    expect((await put(post.id, { revision: post.revision, media: [item("00000000-0000-4000-8000-000000000000")] })).statusCode).toBe(404);
+    expect((await put(post.id, { revision: post.revision, media: [item(a!.id, "2:3")] })).statusCode).toBe(400); // Pinterest-only crop
+    expect((await put(post.id, { revision: post.revision, media: Array.from({ length: 21 }, () => item(a!.id)) })).statusCode).toBe(400);
+    // Removed photos can be deleted from the library again.
+    expect((await call("DELETE", `/api/media/${b!.id}`)).statusCode).toBe(200);
+  });
+
+  it("requires every photo in a carousel to have the same shape", async () => {
+    const ig = await account("instagram", "IG");
+    const wide = await uploadOne(await jpeg(1600, 900), "wide.jpg");
+    const square = await uploadOne(await jpeg(1000, 1000), "square.jpg");
+    let post = (await call("POST", `/api/accounts/${ig.id}/posts`, { mediaAssetIds: [wide.id, square.id] })).json().post;
+    expect(messages(post)).toContain("Every photo in a carousel needs the same shape. Choose the same crop (for example Square 1:1) for all of them.");
+    post = (await put(post.id, { revision: post.revision, media: [item(wide.id, "1:1"), item(square.id, "1:1")] })).json().post;
+    expect(messages(post)).toEqual([]);
+  });
+
+  it("enforces each platform's photo limit: Pinterest 5, Instagram 20", async () => {
+    const pin = await account("pinterest", "Pins");
+    const ig = await account("instagram", "IG");
+    const six = await photos(6);
+    const pinPost = (await call("POST", `/api/accounts/${pin.id}/posts`, { mediaAssetIds: six.map((p) => p.id) })).json().post;
+    expect(messages(pinPost)).toContain("Pinterest carousel Pins hold at most 5 photos.");
+    const igPost = (await call("POST", `/api/accounts/${ig.id}/posts`, { mediaAssetIds: six.map((p) => p.id) })).json().post;
+    expect(messages(igPost).some((m) => /at most/.test(m))).toBe(false);
+    // Copying the six-photo Instagram carousel to Pinterest keeps every photo and explains the limit.
+    const [copy] = (await call("POST", `/api/posts/${igPost.id}/copies`, { accountIds: [pin.id] })).json().posts;
+    expect(copy.media).toHaveLength(6);
+    expect(messages(copy)).toContain("Pinterest carousel Pins hold at most 5 photos.");
+  });
+
+  it("previews every photo of a carousel as its exact derivative", async () => {
+    const ig = await account("instagram", "IG");
+    const [a, b] = await photos(2);
+    const post = (await call("POST", `/api/accounts/${ig.id}/posts`, { mediaAssetIds: [a!.id, b!.id] })).json().post;
+    for (const m of post.media) {
+      const res = await call("GET", m.previewUrl);
+      expect(res.statusCode).toBe(200);
+      expect(res.headers["content-type"]).toBe("image/jpeg");
+    }
+    expect((await call("GET", `/api/posts/${post.id}/media/2/preview`)).statusCode).toBe(404);
+  });
+});

@@ -92,16 +92,20 @@ async function processClaim(deps: WorkerDeps, c: ClaimedPost): Promise<void> {
     );
   }
   const post = posts.get(c.id);
-  const item = post.media[0];
-  if (!item) return attention("validation", "Not published: the post has no photo.", "no_media");
-  const asset = deps.media.get(item.mediaAssetId);
+  if (post.media.length === 0) return attention("validation", "Not published: the post has no photo.", "no_media");
+  const assets = post.media.map((m) => deps.media.get(m.mediaAssetId));
   if (!account.identity || !account.credentialRef) {
     return attention("auth", "Not published: reconnect this account.", "missing_credentials");
   }
 
-  const derivative = await deps.media.derivative(asset, account.platform, computeCrop(asset.width, asset.height, item.cropAspect, item.focusX, item.focusY));
-  const sha256 = await sha256File(derivative.file);
-  schedule.updateAttempt(attemptId, { mediaAssetId: asset.id, derivativeSha256: sha256 });
+  const prepared: PublishJob["media"] = [];
+  for (const [i, item] of post.media.entries()) {
+    const asset = assets[i]!;
+    const derivative = await deps.media.derivative(asset, account.platform, computeCrop(asset.width, asset.height, item.cropAspect, item.focusX, item.focusY));
+    prepared.push({ file: derivative.file, sha256: await sha256File(derivative.file) });
+  }
+  // The attempt records the first photo and every derivative's hash, in order.
+  schedule.updateAttempt(attemptId, { mediaAssetId: assets[0]!.id, derivativeSha256: prepared.map((m) => m.sha256).join(",") });
   const job: PublishJob = {
     postId: post.id,
     attemptNo,
@@ -114,7 +118,7 @@ async function processClaim(deps: WorkerDeps, c: ClaimedPost): Promise<void> {
     pinDescription: post.pinDescription,
     pinLink: post.pinLink,
     pinBoardId: post.pinBoardId,
-    derivative: { file: derivative.file, sha256 },
+    media: prepared,
     containerId: c.remoteContainerId,
   };
 
@@ -131,7 +135,7 @@ async function processClaim(deps: WorkerDeps, c: ClaimedPost): Promise<void> {
     );
   }
 
-  const blocking = validatePost(account.platform, post, new Map([[asset.id, asset]])).filter((i) => i.severity === "blocking");
+  const blocking = validatePost(account.platform, post, new Map(assets.map((a) => [a.id, a]))).filter((i) => i.severity === "blocking");
   if (blocking.length > 0) return attention("validation", `Not published: ${blocking[0]!.message}`, "validation");
 
   // ---- Stage and check (repeatable, nothing public yet) ----

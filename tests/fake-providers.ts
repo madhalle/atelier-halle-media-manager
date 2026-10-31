@@ -55,6 +55,12 @@ export interface FakeState {
     quotaUsage: number;
     publishFails: null | { status: number; json?: unknown };
     publishedCaption: string | null;
+    /** Carousel item containers created, by id, with their status and image URL. */
+    items: Map<string, { status: string; imageUrl: string }>;
+    /** Statuses the next item status checks return (FIFO), before the item's own status. */
+    itemStatusQueue: string[];
+    /** The last carousel container's children and caption. */
+    carousel: { children: string[]; caption: string | null } | null;
   };
   pin: {
     accountType: string;
@@ -65,6 +71,8 @@ export interface FakeState {
     refreshValid: boolean;
     /** Create the Pin but answer 502, as if the response were lost. */
     loseNextResponse: boolean;
+    /** The media_source of the last Pin created. */
+    lastMedia: { source_type: string; items?: unknown[] } | null;
   };
   r2: { objects: Map<string, string>; badSignatures: number };
 }
@@ -80,8 +88,8 @@ export async function startFakeProviders(): Promise<FakeProviders> {
   const log: Recorded[] = [];
   const state: FakeState = {
     log,
-    ig: { accountType: "BUSINESS", userId: "17841400000000001", permissions: ["instagram_business_basic", "instagram_business_content_publish"], tokenSeq: 0, containerStatus: "FINISHED", quotaUsage: 0, publishFails: null, publishedCaption: null },
-    pin: { accountType: "BUSINESS", id: "549755885175", tokenSeq: 0, createFails: null, pins: [], refreshValid: true, loseNextResponse: false },
+    ig: { accountType: "BUSINESS", userId: "17841400000000001", permissions: ["instagram_business_basic", "instagram_business_content_publish"], tokenSeq: 0, containerStatus: "FINISHED", quotaUsage: 0, publishFails: null, publishedCaption: null, items: new Map(), itemStatusQueue: [], carousel: null },
+    pin: { accountType: "BUSINESS", id: "549755885175", tokenSeq: 0, createFails: null, pins: [], refreshValid: true, loseNextResponse: false, lastMedia: null },
     r2: { objects: new Map(), badSignatures: 0 },
   };
 
@@ -103,7 +111,27 @@ export async function startFakeProviders(): Promise<FakeProviders> {
     if (r.path === "/refresh_access_token") return { status: 200, json: { access_token: `IG-LONG-${++state.ig.tokenSeq}`, token_type: "bearer", expires_in: 5183944 } };
     if (!tok?.startsWith("IG-LONG-")) return { status: 400, json: { error: { message: "Invalid OAuth access token.", code: 190 } } };
     if (r.path === "/v26.0/me") return { status: 200, json: { id: "app-scoped-1", user_id: state.ig.userId, username: "atelierhalle", account_type: state.ig.accountType } };
-    if (r.method === "POST" && r.path === `/v26.0/${state.ig.userId}/media`) return { status: 200, json: { id: "17889455560051444" } };
+    if (r.method === "POST" && r.path === `/v26.0/${state.ig.userId}/media`) {
+      const f = new URLSearchParams(r.body);
+      if (f.get("is_carousel_item") === "true") {
+        if (f.has("caption")) return { status: 400, json: { error: { message: "Carousel items don't take a caption", code: 100 } } };
+        const id = `1790000000000${String(state.ig.items.size).padStart(4, "0")}`;
+        state.ig.items.set(id, { status: "FINISHED", imageUrl: f.get("image_url") ?? "" });
+        return { status: 200, json: { id } };
+      }
+      if (f.get("media_type") === "CAROUSEL") {
+        const children = (f.get("children") ?? "").split(",").filter(Boolean);
+        if (children.length < 2 || children.length > 20 || children.some((c) => state.ig.items.get(c)?.status !== "FINISHED")) {
+          return { status: 400, json: { error: { message: "Invalid children for carousel", code: 100 } } };
+        }
+        state.ig.carousel = { children, caption: f.get("caption") };
+      }
+      return { status: 200, json: { id: "17889455560051444" } };
+    }
+    const item = /^\/v26\.0\/(1790000000000\d{4})$/.exec(r.path);
+    if (item && state.ig.items.has(item[1]!)) {
+      return { status: 200, json: { status_code: state.ig.itemStatusQueue.shift() ?? state.ig.items.get(item[1]!)!.status } };
+    }
     if (r.path === "/v26.0/17889455560051444") return { status: 200, json: { status_code: state.ig.containerStatus } };
     if (r.path === `/v26.0/${state.ig.userId}/content_publishing_limit`) return { status: 200, json: { data: [{ quota_usage: state.ig.quotaUsage, config: { quota_total: 50, quota_duration: 86400 } }] } };
     if (r.method === "POST" && r.path === `/v26.0/${state.ig.userId}/media_publish`) {
@@ -137,7 +165,23 @@ export async function startFakeProviders(): Promise<FakeProviders> {
     if (r.method === "POST" && r.path === "/v5/pins") {
       if (!sandbox) return { status: 403, json: { code: 3, message: "Trial apps must use the sandbox." } };
       if (state.pin.createFails) return state.pin.createFails;
-      const b = JSON.parse(r.body) as { title?: string; description?: string; board_id: string; media_source: { data: string } };
+      const b = JSON.parse(r.body) as {
+        title?: string;
+        description?: string;
+        board_id: string;
+        media_source: { source_type: string; data?: string; items?: { content_type?: string; data?: string }[] };
+      };
+      const m = b.media_source;
+      const b64 = (d: unknown) => typeof d === "string" && /^[a-zA-Z0-9+/=]+$/.test(d);
+      const valid =
+        (m.source_type === "image_base64" && b64(m.data)) ||
+        (m.source_type === "multiple_image_base64" &&
+          Array.isArray(m.items) &&
+          m.items.length >= 2 &&
+          m.items.length <= 5 &&
+          m.items.every((i) => i.content_type === "image/jpeg" && b64(i.data)));
+      if (!valid) return { status: 400, json: { code: 1, message: "Invalid media_source" } };
+      state.pin.lastMedia = { source_type: m.source_type, ...(m.items ? { items: m.items } : {}) };
       const pin = { id: `81365000000${state.pin.pins.length}`, title: b.title ?? "", description: b.description ?? "", created_at: new Date().toISOString().slice(0, 19) };
       state.pin.pins.push(pin);
       if (state.pin.loseNextResponse) {

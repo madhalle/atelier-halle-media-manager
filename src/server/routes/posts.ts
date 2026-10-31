@@ -16,7 +16,28 @@ export interface PostView extends Omit<Post, "media"> {
 
 const IdParams = z.object({ id: z.uuid() });
 const PreviewParams = z.object({ id: z.uuid(), position: z.coerce.number().int().min(0).max(19) });
-const CreateBody = z.object({ mediaAssetId: z.uuid() }).strict();
+const CreateBody = z.union([
+  z.object({ mediaAssetId: z.uuid() }).strict(),
+  z.object({ mediaAssetIds: z.array(z.uuid()).min(1).max(20) }).strict(),
+]);
+const MediaBody = z
+  .object({
+    revision: z.number().int().positive(),
+    media: z
+      .array(
+        z
+          .object({
+            mediaAssetId: z.uuid(),
+            cropAspect: z.enum(CROP_ASPECTS),
+            focusX: z.number().min(0).max(1),
+            focusY: z.number().min(0).max(1),
+          })
+          .strict(),
+      )
+      .min(1)
+      .max(20),
+  })
+  .strict();
 // Generous transport limits; platform limits are reported as issues so drafts can be saved mid-edit.
 const text = (max: number) => z.string().max(max);
 const PatchBody = z
@@ -80,8 +101,19 @@ export function registerPostRoutes(
 
   api.post("/accounts/:id/posts", async (req, reply) => {
     const { id } = IdParams.parse(req.params);
-    const { mediaAssetId } = CreateBody.parse(req.body);
-    return reply.code(201).send({ post: view(posts.createDraft(id, mediaAssetId)) });
+    const body = CreateBody.parse(req.body);
+    const ids = "mediaAssetIds" in body ? body.mediaAssetIds : [body.mediaAssetId];
+    return reply.code(201).send({ post: view(posts.createDraft(id, ids)) });
+  });
+
+  // Add, remove or reorder photos: the full ordered list replaces the old one.
+  api.put("/posts/:id/media", async (req) => {
+    const { id } = IdParams.parse(req.params);
+    const body = MediaBody.parse(req.body);
+    const before = posts.get(id).media.map((m) => m.mediaAssetId);
+    const updated = posts.setMedia(id, body.revision, body.media);
+    for (const assetId of new Set([...before, ...updated.media.map((m) => m.mediaAssetId)])) await media.pruneDerivatives(assetId);
+    return { post: view(updated) };
   });
 
   api.get("/posts/:id", async (req) => {

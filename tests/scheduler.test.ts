@@ -64,6 +64,40 @@ describe("scheduler", () => {
   const tick = () => env.scheduler.tick();
   const status = (id: string) => env.posts.get(id).status;
 
+  it("publishes a carousel with every photo prepared in order, and records each derivative", async () => {
+    const a = connectedAccount(env);
+    const ids = [await photo(env), await photo(env), await photo(env)];
+    let post = env.posts.createDraft(a.id, ids);
+    post = env.posts.update(post.id, post.revision, { fields: { caption: "Three looks" } });
+    const instant = new Date(env.clock.now().getTime() + 5 * 60_000).toISOString();
+    env.schedule.schedule(post.id, post.revision, { instant, timezone: "America/New_York", localTime: "2026-10-29T08:05" }, env.clock.now());
+    const seen: { media: { file: string; sha256: string }[] }[] = [];
+    env.fakes.instagram.hooks.commit = (job) => void seen.push({ media: job.media });
+
+    env.clock.advance(5 * 60_000);
+    await tick();
+    expect(status(post.id)).toBe("published");
+    expect(seen).toHaveLength(1);
+    expect(seen[0]!.media).toHaveLength(3);
+    expect(new Set(seen[0]!.media.map((m) => m.sha256)).size).toBe(3);
+    const attempt = env.db.prepare("SELECT media_asset_id, derivative_sha256 FROM publish_attempts WHERE post_id = ?").get(post.id) as { media_asset_id: string; derivative_sha256: string };
+    expect(attempt.media_asset_id).toBe(ids[0]);
+    expect(attempt.derivative_sha256.split(",")).toEqual(seen[0]!.media.map((m) => m.sha256));
+  });
+
+  it("refuses to publish a carousel whose photos have different shapes", async () => {
+    const a = connectedAccount(env);
+    const ids = [await photo(env, 1080, 1080), await photo(env, 1600, 900)];
+    let post = env.posts.createDraft(a.id, ids);
+    post = env.posts.update(post.id, post.revision, { fields: { caption: "Mixed" } });
+    const instant = new Date(env.clock.now().getTime() + 5 * 60_000).toISOString();
+    env.schedule.schedule(post.id, post.revision, { instant, timezone: "America/New_York", localTime: "2026-10-29T08:05" }, env.clock.now());
+    env.clock.advance(5 * 60_000);
+    await tick();
+    expect(env.posts.get(post.id)).toMatchObject({ status: "needs_attention", attentionKind: "validation" });
+    expect(commits(env)).toBe(0);
+  });
+
   it("publishes once when due, never early, and records history", async () => {
     const a = connectedAccount(env);
     const post = await scheduledPost(env, a.id, 10);

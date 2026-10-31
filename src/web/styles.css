@@ -292,3 +292,13 @@ dialog:has(.setup) { width: min(46rem, calc(100vw - 2rem)); max-height: calc(100
 .redirect-note input { width: 100%; font-family: ui-monospace, monospace; font-size: 0.85rem; padding: 0.35rem 0.5rem; border: 1px solid var(--line); border-radius: var(--radius); background: var(--panel); color: var(--fg); }
 .redirect-note label { font-weight: 600; font-size: 0.9rem; }
 .field select { font: inherit; padding: 0.4rem 0.5rem; border: 1px solid var(--line); border-radius: var(--radius); background: var(--bg); color: var(--fg); }
+
+/* Carousel photo strip in the composer */
+.photo-strip { display: flex; flex-wrap: wrap; align-items: flex-start; gap: 0.5rem; margin-bottom: 0.75rem; }
+.photo-strip ol { display: flex; flex-wrap: wrap; gap: 0.5rem; list-style: none; margin: 0; padding: 0; }
+.photo-strip li { display: flex; flex-direction: column; align-items: center; gap: 0.25rem; }
+.strip-thumb { padding: 2px; border: 2px solid transparent; border-radius: var(--radius); background: none; }
+.photo-strip li.selected .strip-thumb { border-color: var(--accent); }
+.strip-thumb img { width: 64px; height: 64px; object-fit: cover; display: block; border-radius: calc(var(--radius) - 2px); }
+.strip-actions { display: flex; gap: 2px; }
+.strip-actions button { padding: 0 0.4rem; min-width: 1.6rem; line-height: 1.6; }

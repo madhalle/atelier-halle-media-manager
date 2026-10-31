@@ -13,6 +13,8 @@ captions and crops, and posts that go out on time, exactly once.
 - **Multiple accounts, one library.** Add any number of Instagram and
   Pinterest accounts. Upload photos once (deduplicated by content hash) and
   reuse them across accounts.
+- **Single photos and carousels.** Up to 20 photos per Instagram carousel and
+  5 per Pinterest carousel Pin, with add, remove and reorder.
 - **Platform-aware composer.** Captions, alt text, Pin titles, links and
   boards, with each platform's limits validated live and an exact preview of
   the crop that will be published.
@@ -76,7 +78,7 @@ bounded, jittered backoff. Details: [docs/scheduling.md](docs/scheduling.md).
 pruned when no longer needed, a disk-space guard, and backups that hard-link
 immutable photos so they take no extra space.
 
-**Tested like it matters.** 188 unit and integration tests and 30 Playwright
+**Tested like it matters.** 200 unit and integration tests and 31 Playwright
 browser tests. Platform APIs are exercised against loopback fakes that verify
 what the app sends (including R2 request signatures), so the suite never touches a
 real account. Security checks were mutation-tested: each was deliberately broken
@@ -97,9 +99,10 @@ to confirm a test fails.
 
 ## Project status
 
-Feature-complete for single-photo posts and fully tested against simulated
-platforms. **In progress:** first live posts (awaiting platform app approval),
-multi-photo carousels, and Pinterest Standard API access.
+Feature-complete for single-photo and carousel posts, and fully tested against
+simulated platforms. Cloudflare R2 delivery is verified against the real
+service. **In progress:** first live posts (awaiting platform app approval) and
+Pinterest Standard API access.
 
 ## How it was built
 
@@ -128,7 +131,8 @@ to view; see [LICENSE](LICENSE).
 | Vertical account sidebar, per-account main panel, narrow-screen drawer | ✅ Works |
 | Identity uniqueness and schedule-review rules | ✅ Works (enforced in the database; exercised by tests only, since connecting needs platform sign-in) |
 | Photo library: multi-file upload, dedupe, thumbnails, safe deletion | ✅ Works |
-| Single-photo drafts, platform-specific composer, crop with exact preview, validation | ✅ Works |
+| Drafts, platform-specific composer, crop with exact preview, validation | ✅ Works |
+| Carousels: Instagram 2–20 photos, Pinterest 2–5; add, remove, reorder, shared crop shape | ✅ Works against test fakes; ⚠️ no live carousel yet |
 | Independent copies across accounts; deleting unpublished drafts | ✅ Works |
 | Pinterest board selection | ⏳ Needs a connected account (milestone 6) |
 | Scheduling with explicit time zones and daylight-saving handling | ✅ Works |
@@ -139,7 +143,7 @@ to view; see [LICENSE](LICENSE).
 | Token storage and renewal | ✅ Works against test fakes; Keychain verified on this Mac |
 | Pinterest publishing (direct upload, sandbox/standard) | ⚠️ Built and tested against fakes; no live Pin yet |
 | Instagram publishing via R2 media delivery | ⚠️ Built and tested against fakes; no live post yet |
-| R2 "Test connection" (upload, presigned read, delete) | ✅ Works against test fakes; run it in Platform setup to check your real bucket |
+| R2 "Test connection" (upload, presigned read, delete) | ✅ Verified against the real R2 service |
 | Backups: daily, before upgrades, manual; verify, export, restore | ✅ Works (tested) |
 | Background service (LaunchAgent) | ⚠️ Built and tested; not yet installed on this Mac |
 

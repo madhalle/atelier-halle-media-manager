@@ -16,8 +16,8 @@ export interface PublishJob {
   pinDescription: string;
   pinLink: string;
   pinBoardId: string | null;
-  /** Prepared derivative file on disk (JPEG, metadata stripped). */
-  derivative: { file: string; sha256: string };
+  /** Prepared derivatives on disk, in post order (JPEG, metadata stripped). More than one is a carousel. */
+  media: { file: string; sha256: string }[];
   /** Remote identifier from an earlier stage call, if any. */
   containerId: string | null;
 }

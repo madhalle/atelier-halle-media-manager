@@ -220,6 +220,13 @@ export const updatePost = (
   request<{ post: Post }>("PATCH", `/api/posts/${post.id}`, { revision: post.revision, fields, ...(media ? { media } : {}) }).then(
     (r) => r.post,
   );
+/** Photos per post: Instagram carousels up to 20, Pinterest carousel Pins up to 5. */
+export const MAX_PHOTOS: Record<Platform, number> = { instagram: 20, pinterest: 5 };
+
+/** Replaces the post's photos in order (add, remove, reorder). */
+export const setPostMedia = (post: Post, media: { mediaAssetId: string; cropAspect: CropAspect; focusX: number; focusY: number }[]) =>
+  request<{ post: Post }>("PUT", `/api/posts/${post.id}/media`, { revision: post.revision, media }).then((r) => r.post);
+
 export const deletePost = (post: Post) => request<{ ok: true }>("DELETE", `/api/posts/${post.id}`, { revision: post.revision });
 export const copyPost = (post: Post, accountIds: string[]) =>
   request<{ posts: Post[] }>("POST", `/api/posts/${post.id}/copies`, { accountIds }).then((r) => r.posts);

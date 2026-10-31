@@ -1,5 +1,7 @@
-// Instagram API with Instagram Login: single-image feed posts.
-//   stage  → upload derivative to R2, presign, POST /{ig-user}/media (container)
+// Instagram API with Instagram Login: single-image and carousel feed posts.
+//   stage  → upload derivative to R2, presign, POST /{ig-user}/media (container).
+//            Carousels: one item container per photo (is_carousel_item), wait
+//            until Instagram has fetched them all, then the CAROUSEL container.
 //   check  → GET /{container}?fields=status_code until FINISHED; then delete staged object
 //   commit → check content_publishing_limit, POST /{ig-user}/media_publish
 //   reconcile → container status PUBLISHED means it went out
@@ -19,8 +21,21 @@ const MediaList = z.object({
 });
 
 const SETTLE_MS = 5 * 60_000;
+/** How long to wait for carousel items to be fetched before trying again later. */
+const ITEM_WAIT_MS = 90_000;
+const ITEM_POLL_MS = 3_000;
 
-export function createInstagramAdapter(deps: { http: HttpClient; endpoints: Endpoints; tokens: TokenManager; stager: R2Stager; now: () => Date }): PlatformAdapter {
+const sleepReal = (ms: number) => new Promise<void>((r) => setTimeout(r, ms));
+
+export function createInstagramAdapter(deps: {
+  http: HttpClient;
+  endpoints: Endpoints;
+  tokens: TokenManager;
+  stager: R2Stager;
+  now: () => Date;
+  sleep?: (ms: number) => Promise<void>;
+}): PlatformAdapter {
+  const sleep = deps.sleep ?? sleepReal;
   const staged = new Map<string, string>(); // container id → staged object key
   const token = (job: PublishJob) => deps.tokens.accessToken({ platform: "instagram", credentialRef: job.credentialRef });
   const graph = (path: string, params: Record<string, string>) => {
@@ -52,6 +67,50 @@ export function createInstagramAdapter(deps: { http: HttpClient; endpoints: Endp
     }
   }
 
+  async function createContainer(job: PublishJob, params: Record<string, string>, what: string): Promise<string> {
+    const res = await postForm(`${encodeURIComponent(job.providerAccountId)}/media`, { ...params, access_token: await token(job) });
+    if (res.status !== 200) throw classifyResponse("instagram", res, what);
+    const id = Id.safeParse(res.json);
+    if (!id.success) throw new PlatformError("transient", "bad_container_response", "Instagram answered, but not in the expected format.");
+    return String(id.data.id);
+  }
+
+  /**
+   * One item container per photo, then the carousel container. The staged
+   * photos are deleted once Instagram has fetched every item, or on failure.
+   * Unused item containers expire on Instagram's side after 24 hours.
+   */
+  async function stageCarousel(job: PublishJob): Promise<string> {
+    const keys: string[] = [];
+    try {
+      const items: string[] = [];
+      for (const m of job.media) {
+        const staged = await deps.stager.stage(m.file);
+        keys.push(staged.key);
+        items.push(await createContainer(job, { image_url: staged.url, is_carousel_item: "true" }, "prepare a carousel photo"));
+      }
+      const deadline = deps.now().getTime() + ITEM_WAIT_MS;
+      for (const item of items) {
+        for (;;) {
+          const status = await containerStatus(job, item);
+          if (status === "FINISHED") break;
+          if (status !== "IN_PROGRESS") {
+            throw new PlatformError("permanent", `carousel_item_${status.toLowerCase()}`, "Instagram couldn't process one of the carousel photos. Check that each is a valid JPEG within Instagram's limits.");
+          }
+          if (deps.now().getTime() >= deadline) {
+            throw new PlatformError("transient", "carousel_items_pending", "Instagram is still processing the carousel photos; it will try again shortly.");
+          }
+          await sleep(ITEM_POLL_MS);
+        }
+      }
+      const params: Record<string, string> = { media_type: "CAROUSEL", children: items.join(",") };
+      if (job.caption) params.caption = job.caption;
+      return await createContainer(job, params, "prepare the carousel");
+    } finally {
+      for (const key of keys) await deps.stager.remove(key);
+    }
+  }
+
   return {
     platform: "instagram",
     simulated: false,
@@ -62,7 +121,8 @@ export function createInstagramAdapter(deps: { http: HttpClient; endpoints: Endp
         if (status === "IN_PROGRESS" || status === "FINISHED") return { containerId: job.containerId };
         await cleanup(job.containerId); // EXPIRED/ERROR: start over with a fresh container
       }
-      const media = await deps.stager.stage(job.derivative.file);
+      if (job.media.length > 1) return { containerId: await stageCarousel(job) };
+      const media = await deps.stager.stage(job.media[0]!.file);
       const params: Record<string, string> = { image_url: media.url, access_token: await token(job) };
       if (job.caption) params.caption = job.caption;
       if (job.altText) params.alt_text = job.altText;

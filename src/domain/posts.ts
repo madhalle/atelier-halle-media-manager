@@ -76,6 +76,9 @@ export interface Post extends PostFields, PostSchedule {
   updatedAt: string;
 }
 
+/** Photos per post: one, or a carousel. Instagram 2–20 (verified 2026-10-31); Pinterest carousel Pins 2–5 (API v5 schema). */
+export const MAX_PHOTOS: Record<Platform, number> = { instagram: 20, pinterest: 5 };
+
 export const LIMITS = {
   instagram: { caption: 2200, hashtags: 30, mentions: 20, altText: 1000 },
   pinterest: { title: 100, description: 800, link: 2048, altText: 500 },
@@ -162,9 +165,19 @@ export function validatePost(platform: Platform, post: PostFields & { media: Pos
   const block = (field: Issue["field"], message: string) => issues.push({ field, message, severity: "blocking" });
   const warn = (field: Issue["field"], message: string) => issues.push({ field, message, severity: "warning" });
 
+  const carousel = post.media.length > 1;
   if (post.media.length === 0) block("media", "Add a photo.");
-  if (post.media.length > 1) block("media", "Only single-photo posts are supported so far.");
+  if (post.media.length > MAX_PHOTOS[platform]) {
+    block(
+      "media",
+      platform === "instagram"
+        ? `Instagram carousels hold at most ${MAX_PHOTOS.instagram} photos.`
+        : `Pinterest carousel Pins hold at most ${MAX_PHOTOS.pinterest} photos.`,
+    );
+  }
+  if (new Set(post.media.map((m) => m.mediaAssetId)).size !== post.media.length) block("media", "The same photo is in this post twice.");
 
+  const ratios: number[] = [];
   for (const m of post.media) {
     const info = media.get(m.mediaAssetId);
     if (!info) {
@@ -176,6 +189,7 @@ export function validatePost(platform: Platform, post: PostFields & { media: Pos
       continue;
     }
     const crop = computeCrop(info.width, info.height, m.cropAspect, m.focusX, m.focusY);
+    ratios.push(crop.width / crop.height);
     if (platform === "instagram") {
       const ratio = crop.width / crop.height;
       if (ratio < INSTAGRAM_RATIO.min - 0.005 || ratio > INSTAGRAM_RATIO.max + 0.005) {
@@ -186,6 +200,11 @@ export function validatePost(platform: Platform, post: PostFields & { media: Pos
     if (platform === "pinterest" && (crop.width < 200 || crop.height < 300)) {
       warn("media", "This photo is small; Pinterest may show it at low quality.");
     }
+  }
+
+  // Instagram crops every carousel photo to the first one's shape; keep them identical so the preview is exact.
+  if (carousel && ratios.length > 1 && ratios.some((r) => Math.abs(r / ratios[0]! - 1) > 0.01)) {
+    block("media", "Every photo in a carousel needs the same shape. Choose the same crop (for example Square 1:1) for all of them.");
   }
 
   if (platform === "instagram") {
@@ -205,7 +224,8 @@ export function validatePost(platform: Platform, post: PostFields & { media: Pos
     if (!post.pinBoardId) block("pinBoard", "Choose a board. Boards load after the account is connected.");
     if (post.pinTitle.trim() === "") warn("pinTitle", "The title is empty.");
   }
-  if (post.altText.trim() === "") warn("altText", "Alt text helps people using screen readers.");
+  // Instagram's docs don't confirm alt text on carousel items, so it isn't sent there (see the composer hint).
+  if (post.altText.trim() === "" && !(carousel && platform === "instagram")) warn("altText", "Alt text helps people using screen readers.");
   return issues;
 }
 

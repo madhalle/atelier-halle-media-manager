@@ -213,6 +213,7 @@ function PostCard({ post, account, onOpen }: { post: Post; account: Account; onO
       {thumb ? <img src={thumb} alt="" loading="lazy" /> : <span className="no-thumb">No photo</span>}
       <span className="post-card-body">
         <span className={`status status-${post.status}`}>{STATUS_LABEL[post.status]}</span>
+        {post.media.length > 1 && <span className="hint">Carousel · {post.media.length} photos</span>}
         <span className="caption-preview">{preview || <em className="hint">No text yet</em>}</span>
         {post.scheduledAt && (post.status === "scheduled" || post.status === "retry_waiting" || post.status === "preparing" || post.status === "publishing") && (
           <span className="when">{formatInZone(post.scheduledAt, post.timezone ?? "UTC")}</span>
