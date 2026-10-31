@@ -64,7 +64,17 @@ export function createR2Stager(deps: { http: HttpClient; endpoints: Endpoints; c
       const url = objectUrl(c, `staging/connection-test-${nonce}.json`);
 
       const putHeaders = signHeaders(signer, SCOPE, { method: "PUT", url, headers: { "content-type": "application/json" }, payloadHash: sha256Hex(body) }, deps.now());
-      const put = await send(deps.http, { method: "PUT", url, headers: putHeaders, body, timeoutMs: 30_000 });
+      const put = await send(deps.http, { method: "PUT", url, headers: putHeaders, body, timeoutMs: 30_000 }).catch((err: unknown) => {
+        // Cloudflare refuses the TLS handshake for an unknown account ID, which looks like a network failure.
+        if (err instanceof PlatformError && err.code === "http_network") {
+          throw new PlatformError(
+            "permanent",
+            "r2_test_unreachable",
+            `${err.safeMessage} Check the account ID: copy it from the bucket's Settings › S3 API address (https://<account ID>.r2.cloudflarestorage.com/…). If it's right, check your internet connection.`,
+          );
+        }
+        throw err;
+      });
       if (put.status !== 200) {
         const why =
           put.status === 403

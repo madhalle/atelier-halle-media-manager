@@ -174,9 +174,14 @@ response shapes. They haven't been checked against the real APIs.
   `PUBLISHED` means it went out. `FINISHED` means it didn't, but only once 5
   minutes have passed.
 
-## Live verification checklist (not started)
+## Live verification checklist (in progress)
 
 Each item needs explicit user authorization where it publishes.
+
+- [x] R2 (2026-10-31): bucket-scoped token works for SigV4 PUT, presigned GET
+      and DELETE against the real account (Platform setup › Test connection).
+      Finding: a wrong account ID makes Cloudflare fail the TLS handshake
+      (alert 40) rather than return an HTTP error.
 
 - [ ] Instagram: register app; confirm accepted redirect URI form (http vs https loopback).
 - [ ] Instagram: connect each intended account; record `account_type` and identity fields.

@@ -50,8 +50,12 @@ Each Pinterest account you'll post to should be a **business** account.
 3. Add a **lifecycle rule** that deletes objects after **1 day**.
 4. Create an **R2 API token** with **Object Read & Write**, limited to that
    one bucket.
-5. In **Platform setup**, enter the account ID (32 hex characters), the bucket
-   name, the access key ID and the secret access key.
+5. In **Platform setup**, enter the account ID, the bucket name, the access
+   key ID and the secret access key.
+   - Copy the account ID from the bucket's **Settings › S3 API** address,
+     `https://<account ID>.r2.cloudflarestorage.com/<bucket>`. Cloudflare
+     shows several look-alike 32-character IDs; a wrong one makes Cloudflare
+     refuse the connection, which looks like a network error.
 6. Click **Test connection**. The app uploads a tiny file, reads it back
    through a 60-second link (as Instagram would), and deletes it.
 

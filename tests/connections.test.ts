@@ -105,6 +105,15 @@ describe("platform setup", () => {
     expect(noSession.statusCode).toBe(401);
   });
 
+  it("points at the account ID when Cloudflare can't be reached", async () => {
+    await setupApps();
+    await fakes.close(); // nothing listening: the connection fails like an unknown R2 account does
+    const res = await call("POST", "/api/platforms/r2/test", {});
+    expect(res.statusCode).toBe(409);
+    expect(res.json().message).toMatch(/Couldn't reach .*Check the account ID: copy it from the bucket's Settings › S3 API address/);
+    fakes = await startFakeProviders();
+  });
+
   it("explains that R2 isn't set up yet", async () => {
     const res = await call("POST", "/api/platforms/r2/test", {});
     expect(res.statusCode).toBe(409);
