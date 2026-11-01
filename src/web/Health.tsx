@@ -15,7 +15,19 @@ export function useHealth(): [Health | null, () => void] {
   return [health, refresh];
 }
 
-export function HealthLine({ health, version, onSettings, onPlatforms }: { health: Health | null; version: string; onSettings: () => void; onPlatforms: () => void }) {
+export function HealthLine({
+  health,
+  version,
+  onSettings,
+  onPlatforms,
+  onMaintenance,
+}: {
+  health: Health | null;
+  version: string;
+  onSettings: () => void;
+  onPlatforms: () => void;
+  onMaintenance: () => void;
+}) {
   if (!health) return <p className="service-line">v{version} · status unavailable</p>;
   const { scheduler, counts } = health;
   const last = scheduler.lastCheckAt ? new Date(scheduler.lastCheckAt).toLocaleTimeString(undefined, { hour: "numeric", minute: "2-digit" }) : "never";
@@ -36,6 +48,10 @@ export function HealthLine({ health, version, onSettings, onPlatforms }: { healt
         ·{" "}
         <button type="button" className="link-button" onClick={onPlatforms}>
           Platform setup
+        </button>{" "}
+        ·{" "}
+        <button type="button" className="link-button" onClick={onMaintenance}>
+          Backups
         </button>
       </p>
     </div>

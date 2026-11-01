@@ -362,3 +362,25 @@ export interface Board {
 export const listBoards = (accountId: string) => request<{ boards: Board[] }>("GET", `/api/accounts/${accountId}/boards`).then((r) => r.boards);
 export const setPostBoard = (post: Post, boardId: string) =>
   request<{ post: Post }>("POST", `/api/posts/${post.id}/board`, { revision: post.revision, boardId }).then((r) => r.post);
+
+// ---- Backups and background service ----
+
+export interface BackupInfo {
+  id: string;
+  reason: "daily" | "manual" | "pre-migration" | "pre-restore";
+  createdAt: string;
+  photoFiles: number;
+  /** Space this backup uses beyond the library itself (photos are hard links). */
+  extraBytes: number;
+}
+
+export interface Maintenance {
+  service: { mode: "background" | "terminal"; env: string };
+  livePublishing: boolean;
+  keychain: { ok: boolean; reason: string | null };
+  backups: BackupInfo[];
+}
+
+export const getMaintenance = () => request<Maintenance>("GET", "/api/maintenance");
+export const backUpNow = () => request<{ backup: { id: string } }>("POST", "/api/backups", {}).then((r) => r.backup);
+export const verifyBackup = (id: string) => request<{ ok: true; photoFiles: number }>("POST", `/api/backups/${encodeURIComponent(id)}/verify`, {});

@@ -209,3 +209,21 @@ test("unauthenticated browsers see sign-in guidance, not data", async ({ page, s
   await page.goto(server.origin);
   await expect(page.getByText("This browser is not signed in")).toBeVisible();
 });
+
+test("backs up from the Backups panel and checks the backup", async ({ page, server }) => {
+  await server.signIn(page);
+  await page.getByRole("button", { name: "Backups" }).click();
+  const dialog = page.getByRole("dialog", { name: "Backups and service" });
+  await expect(dialog).toContainText("Running from Terminal.");
+  // The server made its daily backup when it started.
+  await expect(dialog.locator("table.backups tbody tr")).toHaveCount(1);
+  await expect(dialog.locator("table.backups tbody tr")).toContainText("Daily");
+  await dialog.getByRole("button", { name: "Back up now" }).click();
+  await expect(dialog.getByRole("status").first()).toContainText("Backed up.");
+  await expect(dialog.locator("table.backups tbody tr")).toHaveCount(2);
+  await expect(dialog.locator("table.backups tbody tr").first()).toContainText("Manual");
+  await dialog.getByRole("button", { name: /^Check backup from/ }).first().click();
+  await expect(dialog).toContainText("Intact: database verified");
+  await dialog.locator("summary").click();
+  await expect(dialog.locator("pre").last()).toContainText(/npm run backup -- restore \d{8}-\d{6}-\d{3}-manual --env test/);
+});

@@ -18,6 +18,7 @@ import type { Db } from "../storage/db.ts";
 import type { Config } from "./config.ts";
 import { registerAccountRoutes } from "./routes/accounts.ts";
 import { registerConnectionRoutes, registerOAuthCallbackPage } from "./routes/connections.ts";
+import { registerMaintenanceRoutes } from "./routes/maintenance.ts";
 import { registerMediaRoutes } from "./routes/media.ts";
 import { registerPostRoutes } from "./routes/posts.ts";
 import { registerScheduleRoutes } from "./routes/schedule.ts";
@@ -43,6 +44,8 @@ export interface AppDeps {
   endpoints?: Endpoints;
   fetchImpl?: typeof fetch;
   keychainStatus?: () => { ok: boolean; reason: string | null; kind: "keychain" | "memory" };
+  /** Whether the server runs as the LaunchAgent or from a Terminal. */
+  runMode?: "background" | "terminal";
 }
 
 const DOMAIN_STATUS: Record<DomainErrorCode, number> = {
@@ -195,6 +198,16 @@ export async function buildApp(deps: AppDeps): Promise<FastifyInstance> {
       keychainStatus: deps.keychainStatus ?? (() => ({ ok: true, reason: null, kind: deps.credentials.kind })),
       livePublishing: config.livePublishing,
       view: (id) => view(posts.get(id)),
+    });
+
+    registerMaintenanceRoutes(api, {
+      db,
+      paths: dataPaths(config.dataDir),
+      appVersion: deps.version,
+      env: config.env,
+      runMode: deps.runMode ?? "terminal",
+      livePublishing: config.livePublishing,
+      keychainStatus: deps.keychainStatus ?? (() => ({ ok: true, reason: null, kind: deps.credentials.kind })),
     });
 
     api.get("/session", async (req) => ({ authenticated: true, csrfToken: req.session!.csrfToken }));

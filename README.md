@@ -78,7 +78,7 @@ bounded, jittered backoff. Details: [docs/scheduling.md](docs/scheduling.md).
 pruned when no longer needed, a disk-space guard, and backups that hard-link
 immutable photos so they take no extra space.
 
-**Tested like it matters.** 200 unit and integration tests and 31 Playwright
+**Tested like it matters.** 205 unit and integration tests and 32 Playwright
 browser tests. Platform APIs are exercised against loopback fakes that verify
 what the app sends (including R2 request signatures), so the suite never touches a
 real account. Security checks were mutation-tested: each was deliberately broken
@@ -146,6 +146,7 @@ to view; see [LICENSE](LICENSE).
 | R2 "Test connection" (upload, presigned read, delete) | ✅ Verified against the real R2 service |
 | Backups: daily, before upgrades, manual; verify, export, restore | ✅ Works (tested) |
 | Background service (LaunchAgent) | ⚠️ Built and tested; not yet installed on this Mac |
+| Backups and service panel (status, back up now, check backups) | ✅ Works |
 
 More documentation:
 - [Architecture decision](docs/adr/0001-architecture.md)
@@ -228,6 +229,10 @@ refuses it.
   secret scanning with push protection should stay enabled on this repository.
 
 ## Backups
+
+In the app, the **Backups** link in the sidebar shows whether the server runs
+in the background, live publishing and Keychain status, and the backups, with
+**Back up now** and an integrity **Check**.
 
 The server backs up automatically once a day (keeping 7) and just before any
 database upgrade (keeping 3). Each backup is a consistent SQLite snapshot plus

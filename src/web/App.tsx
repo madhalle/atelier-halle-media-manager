@@ -15,6 +15,7 @@ import {
 } from "./api.ts";
 import { GuardProvider, useGuard } from "./dialogs.tsx";
 import { HealthBanner, HealthLine, SettingsDialog, useHealth } from "./Health.tsx";
+import { MaintenanceDialog } from "./Maintenance.tsx";
 import { PlatformSetupDialog } from "./PlatformSetup.tsx";
 import { Sidebar, type AccountActions } from "./Sidebar.tsx";
 
@@ -82,6 +83,7 @@ function Shell({ status, initialAccounts }: { status: Status; initialAccounts: A
   const [notice, setNotice] = useState<{ text: string; tone: "info" | "error" } | null>(null);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [platformsOpen, setPlatformsOpen] = useState(false);
+  const [maintenanceOpen, setMaintenanceOpen] = useState(false);
   const [platformsVersion, setPlatformsVersion] = useState(0);
   const [health, refreshHealth] = useHealth();
   useEffect(() => {
@@ -213,7 +215,7 @@ function Shell({ status, initialAccounts }: { status: Status; initialAccounts: A
 
       <aside id="sidebar" aria-label="Accounts sidebar">
         <Sidebar accounts={accounts} selectedId={selectedId} actions={actions} onAdd={() => setAddOpen(true)} />
-        <HealthLine health={health} version={status.version} onSettings={() => setSettingsOpen(true)} onPlatforms={() => setPlatformsOpen(true)} />
+        <HealthLine health={health} version={status.version} onSettings={() => setSettingsOpen(true)} onPlatforms={() => setPlatformsOpen(true)} onMaintenance={() => setMaintenanceOpen(true)} />
       </aside>
       {drawerOpen && <div className="backdrop" aria-hidden="true" onClick={() => setDrawerOpen(false)} />}
 
@@ -260,6 +262,7 @@ function Shell({ status, initialAccounts }: { status: Status; initialAccounts: A
         onClose={() => setPlatformsOpen(false)}
         onChanged={() => setPlatformsVersion((n) => n + 1)}
       />
+      <MaintenanceDialog open={maintenanceOpen} onClose={() => setMaintenanceOpen(false)} />
       <SettingsDialog
         open={settingsOpen}
         settings={health?.settings ?? null}

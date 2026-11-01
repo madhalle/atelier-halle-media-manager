@@ -17,7 +17,7 @@ import { createBackup, latestBackup } from "../storage/backup.ts";
 import { migrate, pendingMigrations } from "../storage/migrate.ts";
 import { buildApp } from "./app.ts";
 import { loadConfig } from "./config.ts";
-import { rotateServiceLog, SERVICE_LOG } from "./launch-agent.ts";
+import { rotateServiceLog, runningAsAgent, SERVICE_LOG } from "./launch-agent.ts";
 import { launchUrl, removeLaunchFile, writeLaunchFile } from "./launch.ts";
 import { createSessionStore } from "./sessions.ts";
 
@@ -74,6 +74,7 @@ async function main(): Promise<void> {
     credentials,
     services,
     keychainStatus: () => keychain,
+    runMode: runningAsAgent(config.env) ? "background" : "terminal",
   });
   if (keychain.ok) app.log.info({ keychain: credentials.kind }, "keychain check passed");
   else app.log.warn("macOS Keychain unavailable; connected accounts can't publish until it's accessible");

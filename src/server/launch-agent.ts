@@ -4,6 +4,16 @@ import { existsSync } from "node:fs";
 import { copyFile, stat, truncate } from "node:fs/promises";
 
 export const SERVICE_LOG = "service.log";
+
+/** The LaunchAgent label for an environment. */
+export function agentLabel(env: string): string {
+  return env === "production" ? "com.atelierhalle.media-manager" : "com.atelierhalle.media-manager.dev";
+}
+
+/** launchd sets XPC_SERVICE_NAME to the job's label; a Terminal shell has something else. */
+export function runningAsAgent(env: string, processEnv: NodeJS.ProcessEnv = process.env): boolean {
+  return processEnv.XPC_SERVICE_NAME === agentLabel(env);
+}
 /** The service log is rotated (one previous copy kept) beyond this size. */
 export const MAX_SERVICE_LOG_BYTES = 10 * 1024 * 1024;
 

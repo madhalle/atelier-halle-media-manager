@@ -15,7 +15,7 @@ import { homedir } from "node:os";
 import { join, resolve } from "node:path";
 import { parseArgs, promisify } from "node:util";
 import { loadConfig } from "../src/server/config.ts";
-import { plist, SERVICE_LOG } from "../src/server/launch-agent.ts";
+import { agentLabel, plist, SERVICE_LOG } from "../src/server/launch-agent.ts";
 import { dataPaths, prepareDataDir } from "../src/storage/data-dir.ts";
 
 const run = promisify(execFile);
@@ -28,7 +28,7 @@ if (values.env !== "production" && values.env !== "development") {
   process.exit(1);
 }
 const config = loadConfig({ ...process.env, MEDIA_MANAGER_ENV: values.env });
-const label = values.env === "production" ? "com.atelierhalle.media-manager" : "com.atelierhalle.media-manager.dev";
+const label = agentLabel(values.env);
 const plistPath = join(homedir(), "Library", "LaunchAgents", `${label}.plist`);
 const domain = `gui/${process.getuid!()}`;
 const repo = resolve(import.meta.dirname, "..");
