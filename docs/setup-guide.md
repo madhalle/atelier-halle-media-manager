@@ -32,9 +32,14 @@ use the app ID and secret: see the end of this section.)
    - The token doesn't expire. Revoke it in Business settings › System users
      if it may have leaked, then save a new one. Connected accounts use the
      saved token, so replacing or removing it applies to all of them.
-6. For each Instagram tab: **Connect Instagram account**, choose the account,
-   then **Connect this account**.
-7. Set up R2 (section 3). Instagram can't publish without it.
+6. Assign each Instagram account to the system user (Business settings ›
+   Accounts › Instagram accounts › Assign people › the system user ›
+   **Content**).
+7. For each Instagram tab: **Connect Instagram account**, choose the account,
+   then **Connect this account**. If Meta lists no accounts (observed for
+   system users), enter the account's ID instead: it's shown under the
+   username in Business settings › Accounts › Instagram accounts.
+8. Set up R2 (section 3). Instagram can't publish without it.
 
 **Older Meta apps (Instagram Login).** Add each account as an Instagram tester,
 register `http://localhost:4870/oauth/instagram/callback` under **Business

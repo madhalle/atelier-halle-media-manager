@@ -105,6 +105,22 @@ describe("connecting with a business portfolio token", () => {
     expect(res.json().message).toMatch(/can't reach that Instagram account/);
   });
 
+  it("connects by ID when Meta's assigned-accounts list is empty but the account is reachable", async () => {
+    fakes.state.fb.assigned = []; // observed live for a system user with assigned accounts
+    await saveToken();
+    const a = await newAccount();
+    expect((await call("GET", `/api/accounts/${a.id}/business-instagram-accounts`)).json().accounts).toEqual([]);
+    const res = await call("POST", `/api/accounts/${a.id}/connect-business`, { instagramUserId: "17841400000000001" });
+    expect(res.statusCode).toBe(200);
+    expect(res.json().account.connection.identity).toMatchObject({ username: "atelierhalle", displayName: "Atelier Halle" });
+
+    fakes.state.fb.reachable = [];
+    const b = await newAccount();
+    const refused = await call("POST", `/api/accounts/${b.id}/connect-business`, { instagramUserId: "17841400000000002" });
+    expect(refused.statusCode).toBe(400);
+    expect(refused.json().message).toMatch(/can't reach that Instagram account/);
+  });
+
   it("refuses a token without publishing permission, naming what's missing", async () => {
     fakes.state.fb.permissions = ["instagram_basic", "business_management"];
     await saveToken();

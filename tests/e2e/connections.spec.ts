@@ -86,6 +86,26 @@ test("connects Instagram through a business portfolio token by choosing the acco
   expect(await page.content()).not.toContain(BUSINESS_TOKEN);
 });
 
+test("connects by Instagram account ID when Meta lists no accounts", async ({ page, server, providers }) => {
+  providers.state.fb.assigned = [];
+  await server.signIn(page);
+  await createAccountsViaApi(page, [{ platform: "instagram", displayName: "Studio" }]);
+  await page.reload();
+  await page.getByRole("button", { name: "Platform setup" }).click();
+  const dialog = page.getByRole("dialog", { name: "Platform setup" });
+  const biz = dialog.locator("form").filter({ hasText: "Instagram (Meta business portfolio)" });
+  await biz.getByLabel("System-user access token").fill(BUSINESS_TOKEN);
+  await biz.getByRole("button", { name: "Save" }).click();
+  await expect(biz).toContainText("· set up");
+  await dialog.getByRole("button", { name: "Close" }).click();
+  await page.reload();
+
+  await page.getByRole("button", { name: "Connect Instagram account" }).click();
+  await page.getByLabel("Instagram account ID").fill("17841400000000001");
+  await page.getByRole("button", { name: "Connect this account" }).click();
+  await expect(page.locator("main")).toContainText("Connected as @atelierhalle (business)");
+});
+
 test("refuses a personal Instagram account with an explanation", async ({ page, server, providers }) => {
   providers.state.ig.accountType = "PERSONAL";
   await server.signIn(page);

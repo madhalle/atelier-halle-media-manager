@@ -216,11 +216,10 @@ function ConnectionControls({ account: a, onUpdated }: { account: Account; onUpd
       const r = await listBusinessInstagramAccounts(a.id);
       if (r.missing.length > 0) {
         setMessage({ tone: "error", text: `The token is missing ${r.missing.join(" and ")}. Add it in Meta, generate a new token, and save it in Platform setup.` });
-      } else if (r.accounts.length === 0) {
-        setMessage({ tone: "error", text: "The token can’t reach any Instagram accounts. In Meta Business settings, assign your Instagram accounts to the system user, and include business_management in the configuration." });
       } else {
+        // Meta's list can be empty even when the token can reach the account; then ask for the ID.
         setChoices(r.accounts);
-        setChosen(r.accounts.find((c) => c.username !== null && c.username === identity?.username)?.id ?? r.accounts[0]!.id);
+        setChosen(r.accounts.find((c) => c.username !== null && c.username === identity?.username)?.id ?? r.accounts[0]?.id ?? "");
       }
     } catch (err) {
       setMessage({ tone: "error", text: err instanceof ApiError ? err.message : "Couldn't load the Instagram accounts." });
@@ -293,7 +292,27 @@ function ConnectionControls({ account: a, onUpdated }: { account: Account; onUpd
             : `Not connected. Connecting signs in to ${label}, verifies the real account and checks it can publish.`
           : `${CONNECTION_LABEL[a.connection.state]}${identity?.username ? ` as @${identity.username}` : ""}${identity?.accountType ? ` (${identity.accountType.toLowerCase()})` : ""}.`}
       </p>
-      {choices && !connected && (
+      {choices && choices.length === 0 && !connected && (
+        <div className="field">
+          <label htmlFor={`choose-${a.id}`} className="field-label">
+            Instagram account ID
+          </label>
+          <input
+            id={`choose-${a.id}`}
+            type="text"
+            inputMode="numeric"
+            autoComplete="off"
+            spellCheck={false}
+            value={chosen}
+            onChange={(e) => setChosen(e.target.value.trim())}
+          />
+          <p className="hint">
+            Meta didn’t list the accounts this token can use. Copy the ID from Meta Business settings › Accounts › Instagram accounts (the number
+            under the username). The app checks with Meta that the token can reach it before connecting.
+          </p>
+        </div>
+      )}
+      {choices && choices.length > 0 && !connected && (
         <div className="field">
           <label htmlFor={`choose-${a.id}`} className="field-label">
             Instagram account
@@ -311,7 +330,7 @@ function ConnectionControls({ account: a, onUpdated }: { account: Account; onUpd
       <div className="setup-actions">
         {choices && !connected && (
           <>
-            <button type="button" className="primary" disabled={busy || !chosen} onClick={() => void connectChosen()}>
+            <button type="button" className="primary" disabled={busy || !/^\d{1,30}$/.test(chosen)} onClick={() => void connectChosen()}>
               Connect this account
             </button>
             <button type="button" disabled={busy} onClick={() => setChoices(null)}>

@@ -99,8 +99,14 @@ export function createConnectionService(deps: {
           `The token is missing ${access.missing.join(" and ")}. Add it to the Unified login configuration in Meta, generate a new token, and save it in Platform setup.`,
         );
       }
-      const ig = access.accounts.find((a) => a.id === instagramUserId);
-      if (!ig) throw new DomainError("validation", "The business portfolio token can't reach that Instagram account.");
+      // The assigned-accounts list can be empty even when access works, so fall back to looking the ID up.
+      const ig = access.accounts.find((a) => a.id === instagramUserId) ?? (await asDomain(deps.metaBusiness.lookup(instagramUserId)));
+      if (!ig) {
+        throw new DomainError(
+          "validation",
+          "The business portfolio token can't reach that Instagram account. Check the ID, and that the account is assigned to the system user in Meta Business settings.",
+        );
+      }
       const now = deps.now();
       return attach(
         accountId,

@@ -68,6 +68,8 @@ export interface FakeState {
   fb: {
     permissions: string[];
     assigned: { id: string; username: string; name?: string }[];
+    /** Accounts the token can read by ID (Meta can reach accounts its assigned list omits). */
+    reachable: { id: string; username: string; name?: string }[];
     /** Answer /me/permissions with this status instead (e.g. 400 when Meta won't list them). */
     permissionsStatus: number;
   };
@@ -105,6 +107,10 @@ export async function startFakeProviders(): Promise<FakeProviders> {
         { id: "17841400000000002", username: "studio_second" },
       ],
       permissionsStatus: 200,
+      reachable: [
+        { id: "17841400000000001", username: "atelierhalle", name: "Atelier Halle" },
+        { id: "17841400000000002", username: "studio_second" },
+      ],
     },
     pin: { accountType: "BUSINESS", id: "549755885175", tokenSeq: 0, createFails: null, pins: [], refreshValid: true, loseNextResponse: false, lastMedia: null },
     r2: { objects: new Map(), badSignatures: 0 },
@@ -176,6 +182,11 @@ export async function startFakeProviders(): Promise<FakeProviders> {
       return { status: 200, json: { data: state.fb.permissions.map((permission) => ({ permission, status: "granted" })) } };
     }
     if (r.path === "/v26.0/me/assigned_instagram_accounts") return { status: 200, json: { data: state.fb.assigned } };
+    const lookup = /^\/v26\.0\/(\d+)$/.exec(r.path);
+    if (lookup && r.method === "GET" && r.query.get("fields") === "id,username,name") {
+      const hit = state.fb.reachable.find((a) => a.id === lookup[1]);
+      return hit ? { status: 200, json: hit } : { status: 400, json: { error: { message: "Unsupported get request.", code: 100 } } };
+    }
     return publishing(r);
   });
 

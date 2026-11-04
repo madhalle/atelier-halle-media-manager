@@ -5,7 +5,11 @@
 // OAuth redirect must be HTTPS, which a loopback app can't serve.
 //
 //   accounts  → GET /me/assigned_instagram_accounts (the portfolio's Instagram
-//               accounts assigned to the system user)
+//               accounts assigned to the system user). Observed live
+//               (2026-11-04): empty for a system user that does have assigned
+//               accounts, so an account can also be looked up by its ID.
+//   lookup    → GET /{ig-user-id}?fields=id,username,name (succeeds only if the
+//               token can reach the account)
 //   scopes    → GET /me/permissions
 import { z } from "zod";
 import { PlatformError } from "../domain/publishing.ts";
@@ -33,6 +37,7 @@ const Assigned = z.object({
     }),
   ),
 });
+const IgUser = z.object({ id: z.union([z.string(), z.number()]), username: z.string().optional(), name: z.string().optional() });
 const Permissions = z.object({ data: z.array(z.object({ permission: z.string(), status: z.string() })) });
 
 export interface BusinessInstagramAccount {
@@ -63,6 +68,19 @@ export function createMetaBusiness(deps: { http: HttpClient; endpoints: Endpoint
   }
 
   return {
+    /** One Instagram account by ID, or null if the token can't reach it. */
+    async lookup(id: string): Promise<BusinessInstagramAccount | null> {
+      const tok = await token();
+      const res = await send(deps.http, { method: "GET", url: url(encodeURIComponent(id), { fields: "id,username,name", access_token: tok }), headers: { accept: "application/json" } });
+      if (res.status === 401 || (res.json as { error?: { code?: number } } | null)?.error?.code === 190) {
+        throw new PlatformError("auth_expired", "business_token_invalid", "Meta rejected the business portfolio token. Generate a new one and save it in Platform setup.");
+      }
+      if (res.status !== 200) return null;
+      const u = IgUser.safeParse(res.json);
+      if (!u.success || String(u.data.id) !== id || !u.data.username) return null;
+      return { id, username: u.data.username, name: u.data.name ?? null };
+    },
+
     /** What the saved token can reach. Never returns the token. */
     async access(): Promise<{ token: string; access: BusinessAccess }> {
       const tok = await token();

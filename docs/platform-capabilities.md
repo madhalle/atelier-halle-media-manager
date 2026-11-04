@@ -44,8 +44,16 @@ dashboard and saves it in Platform setup (Keychain). Then:
   `graph.facebook.com` with `instagram_basic` + `instagram_content_publish`.
 - No renewal. Revocation is in Business settings › System users.
 
-**To confirm live:** `/me/permissions` and `assigned_instagram_accounts` with
-a SUAT, `alt_text` on `graph.facebook.com`, and that the token works only for
+**Observed live (2026-11-04):** `/me/permissions` works with a SUAT. Meta
+locks the use case's permissions into every token (comments, insights,
+messages and contents came along with basic and content_publish), so trimming
+happens in the app's use-case settings. `business_management` wasn't offered.
+`me/assigned_instagram_accounts` returned `[]` even with two accounts assigned
+(Content / Full access), while `GET /{ig-user-id}?fields=id,username,name`
+succeeded. The app therefore also connects by account ID, after that lookup
+confirms the token can reach it.
+
+**Still to confirm live:** `alt_text` on `graph.facebook.com`, and that the token works only for
 the assigned accounts. Sources: https://developers.facebook.com/documentation/ads-commerce/marketing-api/reference/system-user/assigned_instagram_accounts
 and the third-party report https://github.com/diwenne/openreply/issues/104.
 
