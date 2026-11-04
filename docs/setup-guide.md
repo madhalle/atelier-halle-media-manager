@@ -27,11 +27,12 @@ Each Pinterest account you'll post to should be a **business** account.
 
 1. Sign in to developers.pinterest.com with a business account, accept the
    Developer Terms, create an app, and request **Trial** access.
-   - Privacy policy URL: `https://madhalle.github.io/atelierhalle-privacy/`
-     (source: `docs/privacy-policy.md`). Pinterest requires the company name
-     in the URL.
-   - Developer purpose: **Personal API access**. Reads Pins and/or Boards:
-     **Yes, mine**.
+   - Website: `https://atelierhalle.com`. Privacy policy URL:
+     `https://atelierhalle.com/privacy` (an unlinked Squarespace page; source:
+     `docs/privacy-policy.md`). Pinterest requires the policy to be on the
+     same domain as the app's website; a separate github.io page was denied.
+   - Developer purpose: **Personal API access**. Audience: **Creators** and
+     **Businesses**. Reads Pins and/or Boards: **Yes, mine**.
 2. Under **Configure › Redirect URIs**, add exactly
    `http://localhost:4870/oauth/pinterest/callback`.
 3. In **Platform setup**, enter the **Pinterest app ID** and **app secret**.
