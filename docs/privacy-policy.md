@@ -1,10 +1,12 @@
 # Atelier Halle Media Manager — Privacy Policy
 
-_Last updated: October 30, 2026_
+_Last updated: November 4, 2026_
 
 Atelier Halle Media Manager ("the app") is a private tool used by Atelier
 Halle to prepare and schedule posts to its own Instagram and Pinterest
 accounts. It is not offered to the public, and it is used only by its owner.
+This policy covers the app only; it is published at
+https://atelierhalle.com/privacy.
 
 ## What the app accesses
 
@@ -42,3 +44,7 @@ Access can also be revoked at any time from the connected-apps section of
 the Pinterest or Instagram account settings.
 
 Deleting the app's local data folder removes everything else it stored.
+
+## Contact
+
+Questions about this policy can be sent through https://atelierhalle.com.
