@@ -44,8 +44,8 @@ advertising, profiling, analytics, or training machine-learning models.
 ## Retention
 
 - Access tokens are kept until the account is disconnected.
-- Account details and the chosen board for each Pin are kept while the
-  account is connected.
+- Account details and the chosen board for each Pin are kept locally with
+  the account's record until the owner deletes the app's data.
 - For published posts, the app keeps the post's ID and link as a local
   posting history until the owner deletes it.
 
