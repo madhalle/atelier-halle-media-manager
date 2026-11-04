@@ -84,6 +84,8 @@ export interface Endpoints {
   instagramAuthorize: string;
   instagramApi: string;
   instagramGraph: string;
+  /** Instagram API through a Meta business portfolio (system-user token). */
+  facebookGraph: string;
   pinterestAuthorize: string;
   pinterestApi: string;
   pinterestSandboxApi: string;
@@ -96,6 +98,7 @@ export const PRODUCTION_ENDPOINTS: Endpoints = {
   instagramAuthorize: "https://www.instagram.com/oauth/authorize",
   instagramApi: "https://api.instagram.com",
   instagramGraph: "https://graph.instagram.com",
+  facebookGraph: "https://graph.facebook.com",
   pinterestAuthorize: "https://www.pinterest.com/oauth/",
   pinterestApi: "https://api.pinterest.com",
   pinterestSandboxApi: "https://api-sandbox.pinterest.com",
@@ -103,7 +106,7 @@ export const PRODUCTION_ENDPOINTS: Endpoints = {
 };
 
 export function endpointOrigins(e: Endpoints, r2AccountId: string | null): Set<string> {
-  const origins = [e.instagramApi, e.instagramGraph, e.pinterestApi, e.pinterestSandboxApi];
+  const origins = [e.instagramApi, e.instagramGraph, e.facebookGraph, e.pinterestApi, e.pinterestSandboxApi];
   if (r2AccountId) origins.push(e.r2(r2AccountId));
   return new Set(origins.map((o) => new URL(o).origin));
 }

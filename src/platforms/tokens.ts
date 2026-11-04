@@ -5,6 +5,7 @@ import type { Account, Platform } from "../domain/accounts.ts";
 import { PlatformError } from "../domain/publishing.ts";
 import { CredentialUnavailable, type CredentialStore } from "../storage/credentials.ts";
 import type { PlatformConfig } from "../storage/platform-config.ts";
+import { BUSINESS_TOKEN_REFERENCE } from "./meta-business.ts";
 import { TokenSetSchema, type OAuthProvider, type TokenSet } from "./oauth.ts";
 
 /** Renew this far ahead of expiry. Instagram tokens die after 60 days without a refresh. */
@@ -55,7 +56,23 @@ export function createTokenManager(deps: {
     }
   }
 
+  async function grantOf(t: TokenSet): Promise<{ accessToken: string; graph: "instagram" | "facebook" }> {
+    if (t.graph !== "facebook") return { accessToken: t.accessToken, graph: "instagram" };
+    // Business portfolio accounts share the one token saved in Platform setup.
+    if (t.accessToken !== BUSINESS_TOKEN_REFERENCE) throw new PlatformError("auth_expired", "corrupt_token", "This account's saved sign-in is unreadable. Reconnect it.");
+    let token: string | null;
+    try {
+      token = await deps.config.instagramBusinessToken();
+    } catch (err) {
+      if (err instanceof CredentialUnavailable) throw new PlatformError("transient", "keychain_unavailable", err.message);
+      throw err;
+    }
+    if (!token) throw new PlatformError("auth_expired", "business_token_removed", "The business portfolio token was removed. Add it again in Settings › Platform setup.");
+    return { accessToken: token, graph: "facebook" };
+  }
+
   function needsRenewal(platform: Platform, t: TokenSet, now: Date): boolean {
+    if (t.graph === "facebook") return false; // system-user tokens don't expire
     const left = Date.parse(t.accessExpiresAt) - now.getTime();
     if (left > RENEW_BEFORE_MS[platform]) return false;
     if (platform === "instagram" && now.getTime() - Date.parse(t.obtainedAt) < IG_MIN_AGE_MS) return false;
@@ -74,7 +91,12 @@ export function createTokenManager(deps: {
     save: (ref: string, tokens: TokenSet) => exclusive(ref, () => save(ref, tokens)),
 
     /** A usable access token, renewing first if it's close to expiry. */
-    accessToken(account: Pick<Account, "platform" | "credentialRef">): Promise<string> {
+    async accessToken(account: Pick<Account, "platform" | "credentialRef">): Promise<string> {
+      return (await this.grant(account)).accessToken;
+    },
+
+    /** The access token plus which Graph host it's for. */
+    grant(account: Pick<Account, "platform" | "credentialRef">): Promise<{ accessToken: string; graph: "instagram" | "facebook" }> {
       const ref = account.credentialRef;
       if (!ref) return Promise.reject(new PlatformError("auth_expired", "not_connected", "This account isn't connected."));
       return exclusive(ref, async () => {
@@ -85,14 +107,14 @@ export function createTokenManager(deps: {
             t = await renew(account.platform, ref, t, now);
           } catch (err) {
             // Still valid? Use it and try renewing next time.
-            if (Date.parse(t.accessExpiresAt) > now.getTime() + 60_000 && !(err instanceof PlatformError && err.kind === "auth_expired")) return t.accessToken;
+            if (Date.parse(t.accessExpiresAt) > now.getTime() + 60_000 && !(err instanceof PlatformError && err.kind === "auth_expired")) return grantOf(t);
             throw err;
           }
         }
         if (Date.parse(t.accessExpiresAt) <= now.getTime()) {
           throw new PlatformError("auth_expired", "token_expired", "The connection expired. Reconnect this account.");
         }
-        return t.accessToken;
+        return grantOf(t);
       });
     },
 

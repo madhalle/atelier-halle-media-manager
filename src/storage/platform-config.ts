@@ -9,22 +9,29 @@ import type { Db } from "./db.ts";
 export type RedirectHost = "localhost" | "127.0.0.1";
 
 export interface PlatformConfigView {
-  instagram: { clientId: string | null; secretSaved: boolean; redirectHost: RedirectHost };
+  /** Two ways to reach Instagram: Instagram Login (app ID + secret), or a business-portfolio system-user token. */
+  instagram: { clientId: string | null; secretSaved: boolean; redirectHost: RedirectHost; businessTokenSaved: boolean };
   pinterest: { clientId: string | null; secretSaved: boolean; redirectHost: RedirectHost; tier: "trial" | "standard" };
   r2: { accountId: string | null; bucket: string | null; accessKeyId: string | null; secretSaved: boolean };
 }
 
 const SECRET_REFS = {
   instagram: "app:instagram:client_secret",
+  instagramBusiness: "app:instagram:business_token",
   pinterest: "app:pinterest:client_secret",
   r2: "app:r2:secret_access_key",
 } as const;
 
 const clientId = z.string().trim().regex(/^\d{5,25}$/, "App IDs are numbers.");
 const secret = z.string().trim().regex(/^[\x21-\x7e]{16,512}$/, "That doesn't look like an app secret.");
+// Meta access tokens start with "EA" and are long and alphanumeric.
+const metaToken = z.string().trim().regex(/^EA[A-Za-z0-9]{30,2048}$/, "That doesn't look like a Meta access token. Copy the whole token, which starts with EA.");
 const PatchSchema = z
   .object({
-    instagram: z.object({ clientId: clientId.nullable(), clientSecret: secret, redirectHost: z.enum(["localhost", "127.0.0.1"]) }).partial().strict(),
+    instagram: z
+      .object({ clientId: clientId.nullable(), clientSecret: secret, redirectHost: z.enum(["localhost", "127.0.0.1"]), businessToken: metaToken })
+      .partial()
+      .strict(),
     pinterest: z
       .object({ clientId: clientId.nullable(), clientSecret: secret, redirectHost: z.enum(["localhost", "127.0.0.1"]), tier: z.enum(["trial", "standard"]) })
       .partial()
@@ -64,7 +71,12 @@ export function createPlatformConfig(db: Db, credentials: CredentialStore, now: 
   return {
     view(): PlatformConfigView {
       return {
-        instagram: { clientId: get("instagram.client_id"), secretSaved: flag("instagram.secret_saved"), redirectHost: (get("instagram.redirect_host") as RedirectHost) ?? "localhost" },
+        instagram: {
+          clientId: get("instagram.client_id"),
+          secretSaved: flag("instagram.secret_saved"),
+          redirectHost: (get("instagram.redirect_host") as RedirectHost) ?? "localhost",
+          businessTokenSaved: flag("instagramBusiness.secret_saved"),
+        },
         pinterest: {
           clientId: get("pinterest.client_id"),
           secretSaved: flag("pinterest.secret_saved"),
@@ -83,6 +95,7 @@ export function createPlatformConfig(db: Db, credentials: CredentialStore, now: 
         if (p.instagram.clientId !== undefined) put("instagram.client_id", p.instagram.clientId);
         if (p.instagram.redirectHost) put("instagram.redirect_host", p.instagram.redirectHost);
         if (p.instagram.clientSecret) await setSecret("instagram", p.instagram.clientSecret);
+        if (p.instagram.businessToken) await setSecret("instagramBusiness", p.instagram.businessToken);
       }
       if (p.pinterest) {
         if (p.pinterest.clientId !== undefined) put("pinterest.client_id", p.pinterest.clientId);
@@ -100,9 +113,13 @@ export function createPlatformConfig(db: Db, credentials: CredentialStore, now: 
     },
 
     /** Removes a platform's app secret from the Keychain and its identifiers from the database. */
-    async clear(kind: keyof typeof SECRET_REFS): Promise<PlatformConfigView> {
+    async clear(kind: "instagram" | "pinterest" | "r2"): Promise<PlatformConfigView> {
       await credentials.delete(SECRET_REFS[kind]);
       put(`${kind}.secret_saved`, null);
+      if (kind === "instagram") {
+        await credentials.delete(SECRET_REFS.instagramBusiness);
+        put("instagramBusiness.secret_saved", null);
+      }
       if (kind === "r2") {
         for (const k of ["r2.account_id", "r2.bucket", "r2.access_key_id"]) put(k, null);
       } else {
@@ -127,7 +144,14 @@ export function createPlatformConfig(db: Db, credentials: CredentialStore, now: 
       return s ? { accountId: v.accountId, bucket: v.bucket, accessKeyId: v.accessKeyId, secretAccessKey: s } : null;
     },
 
+    /** Server-only: the business-portfolio system-user token, or null if not set up. */
+    async instagramBusinessToken(): Promise<string | null> {
+      if (!flag("instagramBusiness.secret_saved")) return null;
+      return credentials.get(SECRET_REFS.instagramBusiness);
+    },
+
     isConfigured(platform: "instagram" | "pinterest"): boolean {
+      if (platform === "instagram" && flag("instagramBusiness.secret_saved")) return true;
       return get(`${platform}.client_id`) !== null && flag(`${platform}.secret_saved`);
     },
   };

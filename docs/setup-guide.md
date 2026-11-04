@@ -6,20 +6,41 @@ them to the macOS Keychain.
 
 ## 1. Instagram (Meta developer app)
 
-Your Instagram accounts must be **Business** (or Creator) accounts.
+Your Instagram accounts must be **Business** accounts.
 
-1. Create a Meta developer account and an app with the **Instagram** product,
-   set to *API setup with Instagram login*. You don't need a Facebook Page.
-2. Under **App roles**, add each Instagram account you'll post to as an
-   **Instagram tester**. Accept each invite while signed in to that account.
-   Keep the app in Development mode. Standard Access covers accounts you own.
-3. Under **Business login settings › OAuth redirect URIs**, add exactly
-   `http://localhost:4870/oauth/instagram/callback`.
-   - If Meta refuses `http`, tell me; the app would then need local HTTPS.
-   - If it wants `127.0.0.1` instead, pick that in the app's *Redirect host*.
-4. In the app, open **Platform setup** and enter the **Instagram app ID** and
-   **app secret**.
-5. Set up R2 (section 3). Instagram can't publish without it.
+Meta apps created since late 2026 only offer **API setup with Unified login**,
+which needs a business portfolio and an HTTPS redirect. A loopback app can't
+serve HTTPS, so the app uses a **system-user token** from that setup instead
+of a sign-in flow. (Older apps with *API setup with Instagram login* can still
+use the app ID and secret: see the end of this section.)
+
+1. Create a Meta developer account and an app with the use case **Manage
+   messaging & content on Instagram**.
+2. Create a **business portfolio** (business.facebook.com), e.g. "Atelier
+   Halle". Under **Settings › Accounts › Instagram accounts**, add each
+   Instagram account and assign yourself to it with content permissions.
+   Require two-factor authentication for everyone.
+3. In the developer app, open **Use cases › Customize › API setup with Unified
+   login** and select the business portfolio.
+4. **Create new configuration** with the least access possible:
+   `instagram_basic`, `instagram_content_publish` and `business_management`.
+   Choose your Instagram accounts as assets and no ad account. Leave the
+   redirect URL empty.
+5. Generate the system-user access token (**2. Generate access tokens**, or
+   Business settings › System users). Paste it only into **Platform setup ›
+   Instagram (Meta business portfolio)**, which saves it to the Keychain.
+   - The token doesn't expire. Revoke it in Business settings › System users
+     if it may have leaked, then save a new one. Connected accounts use the
+     saved token, so replacing or removing it applies to all of them.
+6. For each Instagram tab: **Connect Instagram account**, choose the account,
+   then **Connect this account**.
+7. Set up R2 (section 3). Instagram can't publish without it.
+
+**Older Meta apps (Instagram Login).** Add each account as an Instagram tester,
+register `http://localhost:4870/oauth/instagram/callback` under **Business
+login settings › OAuth redirect URIs**, then enter the **Instagram app ID** and
+**app secret** in Platform setup › Instagram (older Meta apps). Meta now
+requires HTTPS redirects for new apps, so this route may not be available.
 
 ## 2. Pinterest (developer app)
 

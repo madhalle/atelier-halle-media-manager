@@ -20,6 +20,7 @@ const KindParams = z.object({ kind: z.enum(["instagram", "pinterest", "r2"]) });
 const CompleteBody = z
   .object({ state: z.string().min(16).max(200), code: z.string().min(1).max(2048).optional(), error: z.string().max(200).optional() })
   .strict();
+const BusinessConnectBody = z.object({ instagramUserId: z.string().regex(/^\d{1,30}$/) }).strict();
 const BoardBody = z.object({ revision: z.number().int().positive(), boardId: z.string().regex(/^\d{1,30}$/) }).strict();
 
 export interface ConnectionRouteDeps {
@@ -70,6 +71,18 @@ export function registerConnectionRoutes(api: FastifyInstance, d: ConnectionRout
   api.post("/accounts/:id/connect", async (req) => {
     const { id } = IdParams.parse(req.params);
     return d.connections.start(id, sessionId(req));
+  });
+
+  // Business portfolio token: list reachable Instagram accounts (never the token), then connect one.
+  api.get("/accounts/:id/business-instagram-accounts", async (req) => {
+    const { id } = IdParams.parse(req.params);
+    return d.connections.businessAccounts(id);
+  });
+
+  api.post("/accounts/:id/connect-business", async (req) => {
+    const { id } = IdParams.parse(req.params);
+    const { instagramUserId } = BusinessConnectBody.parse(req.body);
+    return { account: toAccountView(await d.connections.connectBusiness(id, instagramUserId)) };
   });
 
   api.post("/oauth/:platform/complete", async (req) => {

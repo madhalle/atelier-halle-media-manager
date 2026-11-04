@@ -2,13 +2,13 @@
 // and answered with a redirect back to our callback, as the real platform
 // would after the user approves; token exchange goes to loopback fakes.
 import type { Page } from "@playwright/test";
-import { IG_SECRET, PIN_SECRET, R2 } from "../fake-providers.ts";
+import { BUSINESS_TOKEN, IG_SECRET, PIN_SECRET, R2 } from "../fake-providers.ts";
 import { createAccountsViaApi, expect, test } from "./server.ts";
 
 async function setUpPlatforms(page: Page) {
   await page.getByRole("button", { name: "Platform setup" }).click();
   const dialog = page.getByRole("dialog", { name: "Platform setup" });
-  const ig = dialog.locator("form").filter({ hasText: "Instagram (Meta app)" });
+  const ig = dialog.locator("form").filter({ hasText: "Instagram (older Meta apps: Instagram Login)" });
   await ig.getByLabel("Instagram app ID").fill("9876543210123");
   await ig.getByLabel("Instagram app secret").fill(IG_SECRET);
   await ig.getByRole("button", { name: "Save" }).click();
@@ -63,6 +63,27 @@ test("connects an Instagram Business account through the real callback flow", as
   expect(new URL(page.url()).hostname).toBe("127.0.0.1");
   await expect(page.locator("main")).toContainText("Pending schedules are paused until you review them.");
   expect(await page.content()).not.toMatch(/IG-(LONG|SHORT)-/);
+});
+
+test("connects Instagram through a business portfolio token by choosing the account", async ({ page, server }) => {
+  await server.signIn(page);
+  await createAccountsViaApi(page, [{ platform: "instagram", displayName: "Second studio" }]);
+  await page.reload();
+  await page.getByRole("button", { name: "Platform setup" }).click();
+  const dialog = page.getByRole("dialog", { name: "Platform setup" });
+  const biz = dialog.locator("form").filter({ hasText: "Instagram (Meta business portfolio)" });
+  await biz.getByLabel("System-user access token").fill(BUSINESS_TOKEN);
+  await biz.getByRole("button", { name: "Save" }).click();
+  await expect(biz).toContainText("· set up");
+  await expect(biz.getByLabel("System-user access token")).toHaveValue("");
+  await dialog.getByRole("button", { name: "Close" }).click();
+  await page.reload();
+
+  await page.getByRole("button", { name: "Connect Instagram account" }).click();
+  await page.getByLabel("Instagram account").selectOption({ label: "@studio_second" });
+  await page.getByRole("button", { name: "Connect this account" }).click();
+  await expect(page.locator("main")).toContainText("Connected as @studio_second (business)");
+  expect(await page.content()).not.toContain(BUSINESS_TOKEN);
 });
 
 test("refuses a personal Instagram account with an explanation", async ({ page, server, providers }) => {

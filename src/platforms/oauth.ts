@@ -14,6 +14,8 @@ export interface TokenSet {
   refreshExpiresAt: string | null;
   scopes: string[];
   obtainedAt: string;
+  /** Set for business-portfolio (system-user) tokens, which use graph.facebook.com and never expire. */
+  graph?: "facebook" | undefined;
 }
 
 export const TokenSetSchema = z.object({
@@ -23,6 +25,7 @@ export const TokenSetSchema = z.object({
   refreshExpiresAt: z.string().nullable(),
   scopes: z.array(z.string()),
   obtainedAt: z.string(),
+  graph: z.literal("facebook").optional(),
 });
 
 export interface AppCredentials {

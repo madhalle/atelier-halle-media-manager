@@ -19,8 +19,9 @@ Instagram APIs to access only what it needs to publish:
 - Permission to create Pins and Instagram posts on the connected account.
 
 The app does not read followers, messages, analytics or other people's data,
-and it does not collect Pinterest or Instagram passwords. Sign-in happens on
-Pinterest's and Instagram's own pages.
+and it does not collect Pinterest or Instagram passwords. Access is granted on
+Pinterest's and Meta's own sites: through Pinterest sign-in, and through
+Meta's business tools for Instagram.
 
 ## How data is used
 

@@ -9,6 +9,7 @@ import { createPlatformConfig } from "../storage/platform-config.ts";
 import { createConnectionService } from "./connect.ts";
 import { createHttpClient, endpointOrigins, PRODUCTION_ENDPOINTS, type Endpoints } from "./http.ts";
 import { createInstagramAdapter } from "./instagram.ts";
+import { createMetaBusiness } from "./meta-business.ts";
 import { instagramOAuth, pinterestOAuth } from "./oauth.ts";
 import { createPinterestAdapter } from "./pinterest.ts";
 import { createTokenManager } from "./tokens.ts";
@@ -37,7 +38,8 @@ export function createPlatformServices(o: PlatformServiceOptions) {
   });
   const providers = { instagram: instagramOAuth(http, endpoints), pinterest: pinterestOAuth(http, endpoints) };
   const tokens = createTokenManager({ credentials: o.credentials, config, providers, now: o.now });
-  const connections = createConnectionService({ accounts: o.accounts, config, providers, tokens, credentials: o.credentials, port: o.port, now: o.now });
+  const metaBusiness = createMetaBusiness({ http, endpoints, config });
+  const connections = createConnectionService({ accounts: o.accounts, config, providers, tokens, credentials: o.credentials, metaBusiness, port: o.port, now: o.now });
   const pinterest = createPinterestAdapter({ http, endpoints, tokens, config, now: o.now });
   const stager = createR2Stager({ http, endpoints, config, now: o.now });
   const instagram = createInstagramAdapter({ http, endpoints, tokens, stager, now: o.now });
@@ -46,7 +48,7 @@ export function createPlatformServices(o: PlatformServiceOptions) {
   /** Real adapters, only when live publishing is enabled and the developer app is set up. */
   const registry = (livePublishing: boolean): AdapterRegistry => (p) => (livePublishing && config.isConfigured(p) ? live[p] : null);
 
-  return { endpoints, config, http, providers, tokens, connections, pinterest, instagram, stager, registry };
+  return { endpoints, config, http, providers, tokens, metaBusiness, connections, pinterest, instagram, stager, registry };
 }
 
 export type PlatformServices = ReturnType<typeof createPlatformServices>;

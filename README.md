@@ -78,7 +78,7 @@ bounded, jittered backoff. Details: [docs/scheduling.md](docs/scheduling.md).
 pruned when no longer needed, a disk-space guard, and backups that hard-link
 immutable photos so they take no extra space.
 
-**Tested like it matters.** 205 unit and integration tests and 32 Playwright
+**Tested like it matters.** 215 unit and integration tests and 33 Playwright
 browser tests. Platform APIs are exercised against loopback fakes that verify
 what the app sends (including R2 request signatures), so the suite never touches a
 real account. Security checks were mutation-tested: each was deliberately broken
@@ -93,7 +93,7 @@ to confirm a test fails.
 | Data | SQLite via better-sqlite3 (WAL, versioned checksummed migrations) |
 | Images | sharp / libvips |
 | UI | React 19, Vite 8, hand-written CSS |
-| Platforms | Instagram Graph API (Instagram Login), Pinterest API v5, Cloudflare R2 |
+| Platforms | Instagram Graph API (business portfolio system-user token, or Instagram Login), Pinterest API v5, Cloudflare R2 |
 | macOS | Keychain (`@napi-rs/keyring`), launchd LaunchAgent |
 | Quality | Vitest, Playwright, oxlint, npm audit signatures |
 

@@ -40,7 +40,22 @@ function SetupBody({ onClose, onChanged }: { onClose: () => void; onChanged: () 
       </p>
 
       <Section
-        title="Instagram (Meta app)"
+        title="Instagram (Meta business portfolio)"
+        kind="instagram"
+        saved={c.instagram.businessTokenSaved}
+        onSaved={after}
+        fields={[{ name: "businessToken", label: "System-user access token", secret: true, saved: c.instagram.businessTokenSaved }]}
+        footer={
+          <p className="hint">
+            For Meta apps using “API setup with Unified login”. Generate the token in the Meta App Dashboard with only instagram_basic,
+            instagram_content_publish and business_management, and your Instagram accounts as assets. It doesn’t expire: it stays in the
+            Keychain, and you can revoke it in Meta Business settings › System users. Replacing or removing it here applies to every connected Instagram account.
+          </p>
+        }
+      />
+      {/* Older Meta apps still offer "API setup with Instagram login". Removing either Instagram section removes both. */}
+      <Section
+        title="Instagram (older Meta apps: Instagram Login)"
         kind="instagram"
         saved={c.instagram.secretSaved}
         onSaved={after}

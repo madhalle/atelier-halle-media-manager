@@ -29,6 +29,7 @@ export interface TestEndpoints {
   instagramAuthorize: string;
   instagramApi: string;
   instagramGraph: string;
+  facebookGraph: string;
   pinterestAuthorize: string;
   pinterestApi: string;
   pinterestSandboxApi: string;
@@ -41,6 +42,7 @@ const TestEndpointsSchema = z
     instagramAuthorize: z.string().url(),
     instagramApi: loopbackUrl,
     instagramGraph: loopbackUrl,
+    facebookGraph: loopbackUrl,
     pinterestAuthorize: z.string().url(),
     pinterestApi: loopbackUrl,
     pinterestSandboxApi: loopbackUrl,

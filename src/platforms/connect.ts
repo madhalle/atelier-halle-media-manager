@@ -14,7 +14,8 @@ import { PlatformError } from "../domain/publishing.ts";
 import type { AccountsRepo } from "../storage/accounts-repo.ts";
 import { newCredentialRef, type CredentialStore } from "../storage/credentials.ts";
 import type { PlatformConfig } from "../storage/platform-config.ts";
-import type { OAuthProvider } from "./oauth.ts";
+import { BUSINESS_TOKEN_REFERENCE, NEVER_EXPIRES, type BusinessInstagramAccount, type MetaBusiness } from "./meta-business.ts";
+import type { OAuthProvider, TokenSet } from "./oauth.ts";
 import type { TokenManager } from "./tokens.ts";
 
 export const FLOW_TTL_MS = 10 * 60_000;
@@ -40,6 +41,7 @@ export function createConnectionService(deps: {
   providers: Record<Platform, OAuthProvider>;
   tokens: TokenManager;
   credentials: CredentialStore;
+  metaBusiness: MetaBusiness;
   port: number;
   now: () => Date;
 }) {
@@ -50,7 +52,71 @@ export function createConnectionService(deps: {
     for (const [k, f] of flows) if (f.expiresAt <= t) flows.delete(k);
   };
 
+  const asDomain = <T>(p: Promise<T>): Promise<T> =>
+    p.catch((err: unknown) => {
+      if (err instanceof PlatformError) throw new DomainError("invalid_state", err.safeMessage);
+      throw err;
+    });
+
+  function businessAccount(accountId: string): Account {
+    const account = deps.accounts.get(accountId);
+    if (account.platform !== "instagram") throw new DomainError("validation", "Business portfolio tokens are for Instagram accounts.");
+    if (account.archivedAt !== null) throw new DomainError("invalid_state", "Restore this account before connecting it.");
+    return account;
+  }
+
+  /** Stores tokens under a fresh reference and swaps it in, removing the previous one. */
+  async function attach(accountId: string, identity: Parameters<AccountsRepo["markConnected"]>[1], tokens: TokenSet): Promise<Account> {
+    const before = deps.accounts.get(accountId);
+    const ref = newCredentialRef();
+    await deps.tokens.save(ref, tokens);
+    let connected: Account;
+    try {
+      connected = deps.accounts.markConnected(accountId, identity, ref);
+    } catch (err) {
+      await deps.credentials.delete(ref).catch(() => undefined);
+      throw err;
+    }
+    if (before.credentialRef && before.credentialRef !== ref) await deps.tokens.remove(before.credentialRef).catch(() => undefined);
+    return connected;
+  }
+
   return {
+    /** Instagram accounts the saved business portfolio token can publish to. */
+    async businessAccounts(accountId: string): Promise<{ accounts: BusinessInstagramAccount[]; missing: string[] }> {
+      businessAccount(accountId);
+      const { access } = await asDomain(deps.metaBusiness.access());
+      return { accounts: access.accounts, missing: access.missing };
+    },
+
+    /** Connects an Instagram account through the business portfolio token, after re-checking access. */
+    async connectBusiness(accountId: string, instagramUserId: string): Promise<Account> {
+      businessAccount(accountId);
+      const { access } = await asDomain(deps.metaBusiness.access());
+      if (access.missing.length > 0) {
+        throw new DomainError(
+          "invalid_state",
+          `The token is missing ${access.missing.join(" and ")}. Add it to the Unified login configuration in Meta, generate a new token, and save it in Platform setup.`,
+        );
+      }
+      const ig = access.accounts.find((a) => a.id === instagramUserId);
+      if (!ig) throw new DomainError("validation", "The business portfolio token can't reach that Instagram account.");
+      const now = deps.now();
+      return attach(
+        accountId,
+        { providerAccountId: ig.id, username: ig.username, displayName: ig.name, avatarUrl: null, accountType: "BUSINESS", verifiedAt: now.toISOString() },
+        {
+          accessToken: BUSINESS_TOKEN_REFERENCE,
+          accessExpiresAt: NEVER_EXPIRES,
+          refreshToken: null,
+          refreshExpiresAt: null,
+          scopes: access.scopes ?? [],
+          obtainedAt: now.toISOString(),
+          graph: "facebook",
+        },
+      );
+    },
+
     redirectUri(platform: Platform): string {
       const v = deps.config.view();
       return redirectUriFor(platform, platform === "instagram" ? v.instagram.redirectHost : v.pinterest.redirectHost, deps.port);
@@ -107,18 +173,7 @@ export function createConnectionService(deps: {
       // Ineligible accounts: the tokens are discarded, never stored.
       if (!check.eligible) throw new DomainError("invalid_state", check.reason ?? "This account can't be used for publishing.");
 
-      const before = deps.accounts.get(flow.accountId);
-      const ref = newCredentialRef();
-      await deps.tokens.save(ref, tokens);
-      let connected: Account;
-      try {
-        connected = deps.accounts.markConnected(flow.accountId, check.identity, ref);
-      } catch (err) {
-        await deps.credentials.delete(ref).catch(() => undefined);
-        throw err;
-      }
-      if (before.credentialRef && before.credentialRef !== ref) await deps.tokens.remove(before.credentialRef).catch(() => undefined);
-      return connected;
+      return attach(flow.accountId, check.identity, tokens);
     },
 
     /**

@@ -330,7 +330,7 @@ export function formatInZone(instant: string, timeZone: string): string {
 
 export interface PlatformSetup {
   config: {
-    instagram: { clientId: string | null; secretSaved: boolean; redirectHost: "localhost" | "127.0.0.1" };
+    instagram: { clientId: string | null; secretSaved: boolean; redirectHost: "localhost" | "127.0.0.1"; businessTokenSaved: boolean };
     pinterest: { clientId: string | null; secretSaved: boolean; redirectHost: "localhost" | "127.0.0.1"; tier: "trial" | "standard" };
     r2: { accountId: string | null; bucket: string | null; accessKeyId: string | null; secretSaved: boolean };
   };
@@ -351,6 +351,16 @@ export const testR2 = () => request<{ ok: true }>("POST", "/api/platforms/r2/tes
 
 export const startConnect = (accountId: string) =>
   request<{ authorizeUrl: string }>("POST", `/api/accounts/${accountId}/connect`, {}).then((r) => r.authorizeUrl);
+export interface BusinessInstagramAccount {
+  id: string;
+  username: string | null;
+  name: string | null;
+}
+/** Instagram accounts the saved business portfolio token can reach; `missing` lists absent required permissions. */
+export const listBusinessInstagramAccounts = (accountId: string) =>
+  request<{ accounts: BusinessInstagramAccount[]; missing: string[] }>("GET", `/api/accounts/${accountId}/business-instagram-accounts`);
+export const connectBusinessInstagram = (accountId: string, instagramUserId: string) =>
+  request<{ account: Account }>("POST", `/api/accounts/${accountId}/connect-business`, { instagramUserId }).then((r) => r.account);
 export const disconnectAccount = (accountId: string) =>
   request<{ account: Account; credentialRemoved: boolean; followUp: string }>("POST", `/api/accounts/${accountId}/disconnect`, {});
 

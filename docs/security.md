@@ -194,6 +194,15 @@ The SQLite database is not separately encrypted.
   ineligible or duplicate identities are discarded.
 - **Minimum scopes:**
   - Instagram: `instagram_business_basic`, `instagram_business_content_publish`
+  - Instagram via a business portfolio (system-user token): `instagram_basic`,
+    `instagram_content_publish`, `business_management`. Ads, messaging and
+    comment permissions that Meta's default configuration includes are removed.
+- **System-user tokens** don't expire. The token is entered once in Platform
+  setup, stored only in the Keychain (one copy), and never returned by the API.
+  Connected accounts store only a reference to it, so removing it in Platform
+  setup stops publishing for all of them at once. Connecting re-checks that the
+  token can reach the chosen account and has publish permission. Revoke it in
+  Meta Business settings › System users.
   - Pinterest: `user_accounts:read`, `boards:read`, `pins:read`, `pins:write`
 - **Renewal** is serialized per account. Instagram tokens are renewed when
   less than 10 days remain (and at least 24 hours old); Pinterest when less

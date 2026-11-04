@@ -41,6 +41,8 @@ async function serve(service: string, log: Recorded[], handler: Handler): Promis
 }
 
 export const IG_SECRET = "ig-app-secret-0123456789abcdef";
+/** A business portfolio (system-user) token, as Meta's dashboard issues them. */
+export const BUSINESS_TOKEN = "EAAEXAMPLEbusinessPortfolioToken0123456789abcdef";
 export const PIN_SECRET = "pin-app-secret-0123456789abcdef";
 export const R2 = { accountId: "0123456789abcdef0123456789abcdef", bucket: "staging-bucket", accessKeyId: "R2ACCESSKEYID0001", secretAccessKey: "r2SecretAccessKey/abcdefghijklmnop0123" };
 
@@ -61,6 +63,13 @@ export interface FakeState {
     itemStatusQueue: string[];
     /** The last carousel container's children and caption. */
     carousel: { children: string[]; caption: string | null } | null;
+  };
+  /** graph.facebook.com, for business portfolio tokens. */
+  fb: {
+    permissions: string[];
+    assigned: { id: string; username: string; name?: string }[];
+    /** Answer /me/permissions with this status instead (e.g. 400 when Meta won't list them). */
+    permissionsStatus: number;
   };
   pin: {
     accountType: string;
@@ -89,6 +98,14 @@ export async function startFakeProviders(): Promise<FakeProviders> {
   const state: FakeState = {
     log,
     ig: { accountType: "BUSINESS", userId: "17841400000000001", permissions: ["instagram_business_basic", "instagram_business_content_publish"], tokenSeq: 0, containerStatus: "FINISHED", quotaUsage: 0, publishFails: null, publishedCaption: null, items: new Map(), itemStatusQueue: [], carousel: null },
+    fb: {
+      permissions: ["instagram_basic", "instagram_content_publish", "business_management"],
+      assigned: [
+        { id: "17841400000000001", username: "atelierhalle", name: "Atelier Halle" },
+        { id: "17841400000000002", username: "studio_second" },
+      ],
+      permissionsStatus: 200,
+    },
     pin: { accountType: "BUSINESS", id: "549755885175", tokenSeq: 0, createFails: null, pins: [], refreshValid: true, loseNextResponse: false, lastMedia: null },
     r2: { objects: new Map(), badSignatures: 0 },
   };
@@ -102,15 +119,8 @@ export async function startFakeProviders(): Promise<FakeProviders> {
     return { status: 404 };
   });
 
-  const igGraph = await serve("ig-graph", log, (r) => {
-    const tok = r.query.get("access_token") ?? new URLSearchParams(r.body).get("access_token");
-    if (r.path === "/access_token") {
-      if (r.query.get("client_secret") !== IG_SECRET) return { status: 400, json: { error: { message: "bad secret", code: 101 } } };
-      return { status: 200, json: { access_token: `IG-LONG-${++state.ig.tokenSeq}`, token_type: "bearer", expires_in: 5183944 } };
-    }
-    if (r.path === "/refresh_access_token") return { status: 200, json: { access_token: `IG-LONG-${++state.ig.tokenSeq}`, token_type: "bearer", expires_in: 5183944 } };
-    if (!tok?.startsWith("IG-LONG-")) return { status: 400, json: { error: { message: "Invalid OAuth access token.", code: 190 } } };
-    if (r.path === "/v26.0/me") return { status: 200, json: { id: "app-scoped-1", user_id: state.ig.userId, username: "atelierhalle", account_type: state.ig.accountType } };
+  // Content publishing: the same endpoints on graph.instagram.com and graph.facebook.com.
+  const publishing: Handler = (r) => {
     if (r.method === "POST" && r.path === `/v26.0/${state.ig.userId}/media`) {
       const f = new URLSearchParams(r.body);
       if (f.get("is_carousel_item") === "true") {
@@ -144,7 +154,31 @@ export async function startFakeProviders(): Promise<FakeProviders> {
       return { status: 200, json: { data: state.ig.publishedCaption === null ? [] : [{ id: "17920238422030506", caption: state.ig.publishedCaption, timestamp: new Date().toISOString(), permalink: "https://www.instagram.com/p/ABC123/" }] } };
     }
     return { status: 404, json: { error: { message: "Unknown path", code: 100 } } };
+  };
+
+  const igGraph = await serve("ig-graph", log, (r) => {
+    const tok = r.query.get("access_token") ?? new URLSearchParams(r.body).get("access_token");
+    if (r.path === "/access_token") {
+      if (r.query.get("client_secret") !== IG_SECRET) return { status: 400, json: { error: { message: "bad secret", code: 101 } } };
+      return { status: 200, json: { access_token: `IG-LONG-${++state.ig.tokenSeq}`, token_type: "bearer", expires_in: 5183944 } };
+    }
+    if (r.path === "/refresh_access_token") return { status: 200, json: { access_token: `IG-LONG-${++state.ig.tokenSeq}`, token_type: "bearer", expires_in: 5183944 } };
+    if (!tok?.startsWith("IG-LONG-")) return { status: 400, json: { error: { message: "Invalid OAuth access token.", code: 190 } } };
+    if (r.path === "/v26.0/me") return { status: 200, json: { id: "app-scoped-1", user_id: state.ig.userId, username: "atelierhalle", account_type: state.ig.accountType } };
+    return publishing(r);
   });
+
+  const fbGraph = await serve("fb-graph", log, (r) => {
+    const tok = r.query.get("access_token") ?? new URLSearchParams(r.body).get("access_token");
+    if (tok !== BUSINESS_TOKEN) return { status: 400, json: { error: { message: "Invalid OAuth access token.", code: 190 } } };
+    if (r.path === "/v26.0/me/permissions") {
+      if (state.fb.permissionsStatus !== 200) return { status: state.fb.permissionsStatus, json: { error: { message: "Unsupported request", code: 100 } } };
+      return { status: 200, json: { data: state.fb.permissions.map((permission) => ({ permission, status: "granted" })) } };
+    }
+    if (r.path === "/v26.0/me/assigned_instagram_accounts") return { status: 200, json: { data: state.fb.assigned } };
+    return publishing(r);
+  });
+
 
   const pinHandler = (sandbox: boolean): Handler => (r) => {
     if (r.path === "/v5/oauth/token") {
@@ -236,13 +270,14 @@ export async function startFakeProviders(): Promise<FakeProviders> {
     return { status: r.method === "DELETE" ? 204 : 200 };
   });
 
-  const servers = [igApi, igGraph, pinApi, pinSandbox, r2];
+  const servers = [igApi, igGraph, fbGraph, pinApi, pinSandbox, r2];
   return {
     state,
     endpoints: {
       instagramAuthorize: "https://www.instagram.com/oauth/authorize",
       instagramApi: igApi.origin,
       instagramGraph: igGraph.origin,
+      facebookGraph: fbGraph.origin,
       pinterestAuthorize: "https://www.pinterest.com/oauth/",
       pinterestApi: pinApi.origin,
       pinterestSandboxApi: pinSandbox.origin,

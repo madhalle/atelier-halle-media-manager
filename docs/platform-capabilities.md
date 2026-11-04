@@ -21,6 +21,34 @@ Page, uses fewer permissions (`instagram_business_basic`,
 `instagram_business_content_publish`), and is enough for publishing to
 professional accounts the user owns.
 
+### Update, November 2026: Unified login and system-user tokens
+
+New Meta apps no longer offer "API setup with Instagram login". The
+Instagram use case only shows **API setup with Unified login** (and Facebook
+login). Unified login requires a business portfolio and an **HTTPS** redirect
+URL: the dashboard rejects `http://localhost` ("Enter a valid HTTPS URL"),
+observed 2026-11-04. Its configuration issues a **system-user access token
+(SUAT)** that never expires.
+
+The app therefore supports a second route: the owner generates the SUAT in the
+dashboard and saves it in Platform setup (Keychain). Then:
+
+- Reachable accounts: `GET graph.facebook.com/v26.0/me/assigned_instagram_accounts`
+  (System User › Assigned Instagram Accounts in Meta's reference). A
+  third-party report says the list is empty until `business_management` is in
+  the configuration.
+- Granted scopes: `GET /me/permissions`. If Meta won't answer it for system
+  users, connecting proceeds, and publishing reports a missing permission.
+- Publishing: the same `/{ig-user-id}/media`, `/media_publish`,
+  `/content_publishing_limit` and container-status calls, on
+  `graph.facebook.com` with `instagram_basic` + `instagram_content_publish`.
+- No renewal. Revocation is in Business settings › System users.
+
+**To confirm live:** `/me/permissions` and `assigned_instagram_accounts` with
+a SUAT, `alt_text` on `graph.facebook.com`, and that the token works only for
+the assigned accounts. Sources: https://developers.facebook.com/documentation/ads-commerce/marketing-api/reference/system-user/assigned_instagram_accounts
+and the third-party report https://github.com/diwenne/openreply/issues/104.
+
 ## Matrix
 
 | Topic | Instagram | Pinterest |

@@ -1,4 +1,6 @@
-// Instagram API with Instagram Login: single-image and carousel feed posts.
+// Instagram content publishing: single-image and carousel feed posts. Accounts
+// connected with Instagram Login use graph.instagram.com; accounts connected
+// through a business portfolio token use graph.facebook.com. Same endpoints.
 //   stage  → upload derivative to R2, presign, POST /{ig-user}/media (container).
 //            Carousels: one item container per photo (is_carousel_item), wait
 //            until Instagram has fetched them all, then the CAROUSEL container.
@@ -37,23 +39,25 @@ export function createInstagramAdapter(deps: {
 }): PlatformAdapter {
   const sleep = deps.sleep ?? sleepReal;
   const staged = new Map<string, string>(); // container id → staged object key
-  const token = (job: PublishJob) => deps.tokens.accessToken({ platform: "instagram", credentialRef: job.credentialRef });
-  const graph = (path: string, params: Record<string, string>) => {
-    const u = new URL(`/${GRAPH_VERSION}/${path}`, deps.endpoints.instagramGraph);
-    u.search = new URLSearchParams(params).toString();
+  type Grant = { accessToken: string; graph: "instagram" | "facebook" };
+  const grant = (job: PublishJob): Promise<Grant> => deps.tokens.grant({ platform: "instagram", credentialRef: job.credentialRef });
+  const host = (g: Grant) => (g.graph === "facebook" ? deps.endpoints.facebookGraph : deps.endpoints.instagramGraph);
+  const graph = (g: Grant, path: string, params: Record<string, string>) => {
+    const u = new URL(`/${GRAPH_VERSION}/${path}`, host(g));
+    u.search = new URLSearchParams({ ...params, access_token: g.accessToken }).toString();
     return u;
   };
-  const postForm = async (path: string, params: Record<string, string>) =>
+  const postForm = async (g: Grant, path: string, params: Record<string, string>) =>
     send(deps.http, {
       method: "POST",
-      url: new URL(`/${GRAPH_VERSION}/${path}`, deps.endpoints.instagramGraph),
+      url: new URL(`/${GRAPH_VERSION}/${path}`, host(g)),
       headers: { "content-type": "application/x-www-form-urlencoded", accept: "application/json" },
-      body: new URLSearchParams(params).toString(),
+      body: new URLSearchParams({ ...params, access_token: g.accessToken }).toString(),
       timeoutMs: 60_000,
     });
 
   async function containerStatus(job: PublishJob, containerId: string): Promise<string> {
-    const res = await send(deps.http, { method: "GET", url: graph(encodeURIComponent(containerId), { fields: "status_code,status", access_token: await token(job) }) });
+    const res = await send(deps.http, { method: "GET", url: graph(await grant(job), encodeURIComponent(containerId), { fields: "status_code,status" }) });
     if (res.status !== 200) throw classifyResponse("instagram", res, "check the upload status");
     const s = Status.safeParse(res.json);
     return (s.success && s.data.status_code) || "UNKNOWN";
@@ -68,7 +72,7 @@ export function createInstagramAdapter(deps: {
   }
 
   async function createContainer(job: PublishJob, params: Record<string, string>, what: string): Promise<string> {
-    const res = await postForm(`${encodeURIComponent(job.providerAccountId)}/media`, { ...params, access_token: await token(job) });
+    const res = await postForm(await grant(job), `${encodeURIComponent(job.providerAccountId)}/media`, params);
     if (res.status !== 200) throw classifyResponse("instagram", res, what);
     const id = Id.safeParse(res.json);
     if (!id.success) throw new PlatformError("transient", "bad_container_response", "Instagram answered, but not in the expected format.");
@@ -123,10 +127,10 @@ export function createInstagramAdapter(deps: {
       }
       if (job.media.length > 1) return { containerId: await stageCarousel(job) };
       const media = await deps.stager.stage(job.media[0]!.file);
-      const params: Record<string, string> = { image_url: media.url, access_token: await token(job) };
+      const params: Record<string, string> = { image_url: media.url };
       if (job.caption) params.caption = job.caption;
       if (job.altText) params.alt_text = job.altText;
-      const res = await postForm(`${encodeURIComponent(job.providerAccountId)}/media`, params);
+      const res = await postForm(await grant(job), `${encodeURIComponent(job.providerAccountId)}/media`, params);
       if (res.status !== 200) {
         await deps.stager.remove(media.key);
         throw classifyResponse("instagram", res, "prepare the post");
@@ -152,11 +156,11 @@ export function createInstagramAdapter(deps: {
 
     async commit(job) {
       if (!job.containerId) throw new PlatformError("permanent", "no_container", "The upload wasn't prepared.");
-      const tok = await token(job);
+      const g = await grant(job);
       // Check the 24-hour publishing quota first; Meta's docs disagree on the number, so ask.
       const limitRes = await send(deps.http, {
         method: "GET",
-        url: graph(`${encodeURIComponent(job.providerAccountId)}/content_publishing_limit`, { fields: "quota_usage,config", access_token: tok }),
+        url: graph(g, `${encodeURIComponent(job.providerAccountId)}/content_publishing_limit`, { fields: "quota_usage,config" }),
       });
       if (limitRes.status === 200) {
         const l = Limit.safeParse(limitRes.json);
@@ -165,13 +169,13 @@ export function createInstagramAdapter(deps: {
           throw new PlatformError("rate_limited", "publishing_quota", `Instagram's limit of ${row.config.quota_total} posts per 24 hours is reached. It will retry later.`, 60 * 60_000);
         }
       }
-      const res = await postForm(`${encodeURIComponent(job.providerAccountId)}/media_publish`, { creation_id: job.containerId, access_token: tok });
+      const res = await postForm(g, `${encodeURIComponent(job.providerAccountId)}/media_publish`, { creation_id: job.containerId });
       if (res.status !== 200) throw classifyResponse("instagram", res, "publish the post");
       const id = Id.safeParse(res.json);
       if (!id.success) throw new PlatformError("ambiguous", "bad_publish_response", "Instagram answered, but not in the expected format.");
       const mediaId = String(id.data.id);
       let permalink: string | null = null;
-      const p = await send(deps.http, { method: "GET", url: graph(encodeURIComponent(mediaId), { fields: "permalink", access_token: tok }) }).catch(() => null);
+      const p = await send(deps.http, { method: "GET", url: graph(g, encodeURIComponent(mediaId), { fields: "permalink" }) }).catch(() => null);
       if (p?.status === 200) {
         const link = (p.json as { permalink?: unknown } | null)?.permalink;
         if (typeof link === "string" && link.startsWith("https://www.instagram.com/")) permalink = link;
@@ -185,7 +189,7 @@ export function createInstagramAdapter(deps: {
       if (status === "PUBLISHED") {
         const res = await send(deps.http, {
           method: "GET",
-          url: graph(`${encodeURIComponent(job.providerAccountId)}/media`, { fields: "id,timestamp,caption,permalink", limit: "10", access_token: await token(job) }),
+          url: graph(await grant(job), `${encodeURIComponent(job.providerAccountId)}/media`, { fields: "id,timestamp,caption,permalink", limit: "10" }),
         });
         const list = res.status === 200 ? MediaList.safeParse(res.json) : null;
         const since = commitStartedAt.getTime() - 2 * 60_000;

@@ -138,6 +138,7 @@ describe("configuration", () => {
       instagramAuthorize: "https://www.instagram.com/oauth/authorize",
       instagramApi: "http://127.0.0.1:5001",
       instagramGraph: "http://127.0.0.1:5002",
+      facebookGraph: "http://127.0.0.1:5006",
       pinterestAuthorize: "https://www.pinterest.com/oauth/",
       pinterestApi: "http://127.0.0.1:5003",
       pinterestSandboxApi: "http://127.0.0.1:5004",
