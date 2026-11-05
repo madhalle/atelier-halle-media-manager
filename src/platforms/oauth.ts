@@ -4,7 +4,7 @@
 import { z } from "zod";
 import type { Platform, VerifiedIdentity } from "../domain/accounts.ts";
 import { PlatformError } from "../domain/publishing.ts";
-import { GRAPH_VERSION, HttpFailure, providerErrorText, type Endpoints, type HttpClient, type HttpResponse } from "./http.ts";
+import { GRAPH_VERSION, HttpFailure, pinterestBase, providerErrorText, type Endpoints, type HttpClient, type HttpResponse } from "./http.ts";
 
 export interface TokenSet {
   accessToken: string;
@@ -223,7 +223,8 @@ const PinAccount = z.object({
 
 export const PINTEREST_SCOPES = ["user_accounts:read", "boards:read", "pins:read", "pins:write"] as const;
 
-export function pinterestOAuth(http: HttpClient, e: Endpoints): OAuthProvider {
+export function pinterestOAuth(http: HttpClient, e: Endpoints, tier: () => "trial" | "standard"): OAuthProvider {
+  const api = (path: string) => new URL(path, pinterestBase(e, tier()));
   const tokenSet = (data: z.infer<typeof PinToken>, now: Date, previous?: TokenSet): TokenSet => ({
     accessToken: data.access_token,
     accessExpiresAt: addSeconds(now, data.expires_in),
@@ -251,7 +252,7 @@ export function pinterestOAuth(http: HttpClient, e: Endpoints): OAuthProvider {
     async exchange(app, code, redirectUri, now) {
       const res = await send(http, {
         method: "POST",
-        url: new URL("/v5/oauth/token", e.pinterestApi),
+        url: api("/v5/oauth/token"),
         headers: { ...FORM, authorization: basic(app) },
         body: form({ grant_type: "authorization_code", code, redirect_uri: redirectUri }),
       });
@@ -264,7 +265,7 @@ export function pinterestOAuth(http: HttpClient, e: Endpoints): OAuthProvider {
       if (!tokens.refreshToken) throw new PlatformError("auth_expired", "no_refresh_token", "The Pinterest connection can't be renewed. Reconnect it.");
       const res = await send(http, {
         method: "POST",
-        url: new URL("/v5/oauth/token", e.pinterestApi),
+        url: api("/v5/oauth/token"),
         headers: { ...FORM, authorization: basic(app) },
         body: form({ grant_type: "refresh_token", refresh_token: tokens.refreshToken }),
       });
@@ -280,7 +281,7 @@ export function pinterestOAuth(http: HttpClient, e: Endpoints): OAuthProvider {
     async identify(tokens, now) {
       const res = await send(http, {
         method: "GET",
-        url: new URL("/v5/user_account", e.pinterestApi),
+        url: api("/v5/user_account"),
         headers: { authorization: `Bearer ${tokens.accessToken}`, accept: "application/json" },
       });
       if (res.status !== 200) throw classifyResponse("pinterest", res, "confirm which account you signed in with");

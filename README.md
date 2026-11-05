@@ -81,7 +81,7 @@ bounded, jittered backoff. Details: [docs/scheduling.md](docs/scheduling.md).
 pruned when no longer needed, a disk-space guard, and backups that hard-link
 immutable photos so they take no extra space.
 
-**Tested like it matters.** 225 unit and integration tests and 37 Playwright
+**Tested like it matters.** 226 unit and integration tests and 37 Playwright
 browser tests. Platform APIs are exercised against loopback fakes that verify
 what the app sends (including R2 request signatures), so the suite never touches a
 real account. Security checks were mutation-tested: each was deliberately broken

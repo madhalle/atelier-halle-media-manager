@@ -7,7 +7,7 @@ import type { Account } from "../domain/accounts.ts";
 import { PlatformError } from "../domain/publishing.ts";
 import type { PlatformConfig } from "../storage/platform-config.ts";
 import { classifyResponse, send } from "./oauth.ts";
-import type { Endpoints, HttpClient } from "./http.ts";
+import { pinterestBase, type Endpoints, type HttpClient } from "./http.ts";
 import type { TokenManager } from "./tokens.ts";
 import type { PlatformAdapter, PublishJob, ReconcileResult } from "./types.ts";
 
@@ -30,7 +30,7 @@ export interface Board {
 }
 
 export function createPinterestAdapter(deps: { http: HttpClient; endpoints: Endpoints; tokens: TokenManager; config: PlatformConfig; now: () => Date }) {
-  const base = () => (deps.config.view().pinterest.tier === "standard" ? deps.endpoints.pinterestApi : deps.endpoints.pinterestSandboxApi);
+  const base = () => pinterestBase(deps.endpoints, deps.config.view().pinterest.tier);
   const auth = async (job: Pick<PublishJob, "credentialRef">) => ({
     authorization: `Bearer ${await deps.tokens.accessToken({ platform: "pinterest", credentialRef: job.credentialRef })}`,
     accept: "application/json",
@@ -110,7 +110,7 @@ export function createPinterestAdapter(deps: { http: HttpClient; endpoints: Endp
       const boards: Board[] = [];
       let bookmark: string | null = null;
       for (let page = 0; page < 5; page++) {
-        const url = new URL("/v5/boards", deps.endpoints.pinterestApi);
+        const url = new URL("/v5/boards", base());
         url.searchParams.set("page_size", "100");
         if (bookmark) url.searchParams.set("bookmark", bookmark);
         const res = await send(deps.http, { method: "GET", url, headers: await auth({ credentialRef: account.credentialRef }) });

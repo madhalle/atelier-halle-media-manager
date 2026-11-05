@@ -232,10 +232,12 @@ export async function startFakeProviders(): Promise<FakeProviders> {
       const n = ++state.pin.tokenSeq;
       return {
         status: 200,
-        json: { access_token: `pina_TESTACCESS${n}`, refresh_token: `pinr_TESTREFRESH${n}`, token_type: "bearer", expires_in: 2592000, refresh_token_expires_in: 5184000, scope: "boards:read,pins:read,pins:write,user_accounts:read" },
+        json: { access_token: `pina_${sandbox ? "" : "PROD"}TESTACCESS${n}`, refresh_token: `pinr_TESTREFRESH${n}`, token_type: "bearer", expires_in: 2592000, refresh_token_expires_in: 5184000, scope: "boards:read,pins:read,pins:write,user_accounts:read" },
       };
     }
-    if (!r.headers.authorization?.startsWith("Bearer pina_")) return { status: 401, json: { code: 2, message: "Authentication failed." } };
+    // As on Pinterest, a token works only in the environment (sandbox or production) that issued it.
+    const bearer = r.headers.authorization ?? "";
+    if (!bearer.startsWith("Bearer pina_") || bearer.startsWith("Bearer pina_PROD") === sandbox) return { status: 401, json: { code: 2, message: "Authentication failed." } };
     if (r.path === "/v5/user_account") {
       return { status: 200, json: { id: state.pin.id, username: "atelierhalle", account_type: state.pin.accountType, business_name: "Atelier Halle", about: "Jewellery", profile_image: `${state.cdn.origin}/img/pin-avatar.jpg`, pin_count: state.pin.pins.length } };
     }

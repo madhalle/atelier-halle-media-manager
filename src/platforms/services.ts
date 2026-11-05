@@ -37,7 +37,7 @@ export function createPlatformServices(o: PlatformServiceOptions) {
     allowInsecureLoopback: o.allowInsecureLoopback ?? false,
     ...(o.fetchImpl ? { fetchImpl: o.fetchImpl } : {}),
   });
-  const providers = { instagram: instagramOAuth(http, endpoints), pinterest: pinterestOAuth(http, endpoints) };
+  const providers = { instagram: instagramOAuth(http, endpoints), pinterest: pinterestOAuth(http, endpoints, () => config.view().pinterest.tier) };
   const tokens = createTokenManager({ credentials: o.credentials, config, providers, now: o.now });
   // A separate client that may only reach the platforms' image hosts (for account previews).
   const imageHttp = createHttpClient({

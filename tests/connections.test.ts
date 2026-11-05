@@ -247,13 +247,30 @@ describe("connecting accounts (OAuth)", () => {
     const { url, res } = await connect(a.id, "pinterest");
     expect(url.searchParams.get("scope")).toBe("user_accounts:read,boards:read,pins:read,pins:write");
     expect(res.statusCode).toBe(200);
-    expect(fakes.calls("pin-api", "/v5/oauth/token")[0]!.body).not.toContain(PIN_SECRET); // secret only in the Authorization header
+    expect(fakes.calls("pin-sandbox", "/v5/oauth/token")[0]!.body).not.toContain(PIN_SECRET); // secret only in the Authorization header
 
     fakes.state.pin.accountType = "PINNER";
     fakes.state.pin.id = "999";
     const b = await account("pinterest");
     const refused = await connect(b.id, "pinterest");
     expect(refused.res.json().message).toMatch(/business account/);
+  });
+
+  it("signs Trial apps in on Pinterest's sandbox and Standard apps on production, since tokens work only where issued", async () => {
+    await setupApps();
+    const trial = await account("pinterest");
+    expect((await connect(trial.id, "pinterest")).res.statusCode).toBe(200);
+    expect(fakes.calls("pin-sandbox", "/v5/oauth/token")).toHaveLength(1);
+    expect(fakes.calls("pin-sandbox", "/v5/user_account")).toHaveLength(1);
+    expect(fakes.calls("pin-api")).toHaveLength(0);
+    expect((await call("GET", `/api/accounts/${trial.id}/boards`)).statusCode).toBe(200);
+
+    await call("POST", `/api/accounts/${trial.id}/disconnect`, {});
+    await call("PATCH", "/api/platforms", { pinterest: { tier: "standard" } });
+    const standard = await account("pinterest");
+    expect((await connect(standard.id, "pinterest")).res.statusCode).toBe(200);
+    expect(fakes.calls("pin-api", "/v5/oauth/token")).toHaveLength(1);
+    expect(fakes.calls("pin-api", "/v5/user_account")).toHaveLength(1);
   });
 
   it("disconnecting deletes the stored token and explains the platform-side step", async () => {

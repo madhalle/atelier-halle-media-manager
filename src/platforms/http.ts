@@ -99,6 +99,14 @@ export interface Endpoints {
 
 export const GRAPH_VERSION = "v26.0";
 
+/**
+ * Trial apps sign in, renew and call the API on Pinterest's sandbox: its tokens
+ * work only there, and production tokens don't work in the sandbox.
+ */
+export function pinterestBase(e: Endpoints, tier: "trial" | "standard"): string {
+  return tier === "standard" ? e.pinterestApi : e.pinterestSandboxApi;
+}
+
 export const PRODUCTION_ENDPOINTS: Endpoints = {
   instagramAuthorize: "https://www.instagram.com/oauth/authorize",
   instagramApi: "https://api.instagram.com",

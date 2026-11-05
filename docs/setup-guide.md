@@ -63,7 +63,9 @@ Each Pinterest account you'll post to should be a **business** account.
    `http://localhost:4870/oauth/pinterest/callback`.
 3. In **Platform setup**, enter the **Pinterest app ID** and **app secret**.
    Leave *API access* on **Trial**: Pins go to the sandbox, visible only to
-   you.
+   you. Trial sign-ins get sandbox tokens, which Pinterest accepts only in the
+   sandbox, so after switching *API access* reconnect each Pinterest account.
+   The sandbox lists only sandbox Boards and Pins, not your public ones.
 4. Public Pins need **Standard** access. Apply from *My apps* with a screen
    recording of signing in through this app. Then switch *API access* to
    Standard.

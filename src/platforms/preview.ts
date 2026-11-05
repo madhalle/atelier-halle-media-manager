@@ -20,7 +20,7 @@ import { z } from "zod";
 import type { Account } from "../domain/accounts.ts";
 import { PlatformError } from "../domain/publishing.ts";
 import type { PlatformConfig } from "../storage/platform-config.ts";
-import { GRAPH_VERSION, type Endpoints, type HttpClient } from "./http.ts";
+import { GRAPH_VERSION, pinterestBase, type Endpoints, type HttpClient } from "./http.ts";
 import { classifyResponse, send } from "./oauth.ts";
 import type { TokenManager } from "./tokens.ts";
 
@@ -203,12 +203,12 @@ export function createPreviewService(deps: {
   }
 
   async function pinterest(account: Account): Promise<Omit<Cached, "credentialRef" | "expiresAt">> {
-    const base = deps.config.view().pinterest.tier === "standard" ? deps.endpoints.pinterestApi : deps.endpoints.pinterestSandboxApi;
+    const base = pinterestBase(deps.endpoints, deps.config.view().pinterest.tier);
     const headers = { authorization: `Bearer ${await deps.tokens.accessToken(account)}`, accept: "application/json" };
     const pinsUrl = new URL("/v5/pins", base);
     pinsUrl.search = new URLSearchParams({ page_size: String(PREVIEW_POSTS) }).toString();
     const [u, pins] = await Promise.all([
-      send(deps.http, { method: "GET", url: new URL("/v5/user_account", deps.endpoints.pinterestApi), headers }),
+      send(deps.http, { method: "GET", url: new URL("/v5/user_account", base), headers }),
       send(deps.http, { method: "GET", url: pinsUrl, headers }),
     ]);
     if (u.status !== 200) throw classifyResponse("pinterest", u, "load the profile");
