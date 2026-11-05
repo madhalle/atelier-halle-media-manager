@@ -72,9 +72,14 @@ export function AccountPreview({ account: a }: { account: Account }) {
 
       {preview && (
         <>
-          <h3 className="preview-subhead">{a.platform === "pinterest" ? "Recent Pins on Pinterest" : `Recently on ${label}`}</h3>
+          <h3 className="preview-subhead">
+            {preview.sandbox ? "Recent sandbox Pins" : a.platform === "pinterest" ? "Recent Pins on Pinterest" : `Recently on ${label}`}
+          </h3>
+          {preview.sandbox && (
+            <p className="hint">On Trial access Pinterest only lists Pins made through this app, not your public Pins. They'll show here with Standard access.</p>
+          )}
           {preview.posts.length === 0 ? (
-            <p className="hint">Nothing posted yet.</p>
+            <p className="hint">{preview.sandbox ? "No sandbox Pins yet." : "Nothing posted yet."}</p>
           ) : (
             <ul className={`preview-grid preview-${a.platform}`}>
               {preview.posts.map((post) => {

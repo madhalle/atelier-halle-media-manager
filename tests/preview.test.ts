@@ -66,6 +66,7 @@ describe("Instagram preview", () => {
       ["photo", "https://www.instagram.com/p/BBB222/"],
       ["video", "https://www.instagram.com/reel/CCC333/"],
     ]);
+    expect(body.sandbox).toBe(false);
     expect(res.body).not.toContain(BUSINESS_TOKEN);
     expect(res.body).not.toContain(fakes.state.cdn.origin); // remote image URLs stay server-side
   });
@@ -144,6 +145,7 @@ describe("Pinterest preview (developer guidelines: no stored data, link back, do
     expect(fakes.calls("pin-sandbox", "/v5/pins").filter((c) => c.method === "GET")).toHaveLength(2);
     expect(first.profile).toMatchObject({ username: "atelierhalle", name: "Atelier Halle", url: "https://www.pinterest.com/atelierhalle/" });
     expect(first.posts).toMatchObject([{ kind: "pin", url: "https://www.pinterest.com/pin/813650000001/" }]);
+    expect(first.sandbox).toBe(true); // Trial: the UI explains public Pins aren't listed
 
     const img = await call("GET", first.posts[0].image);
     expect(img.headers["cache-control"]).toBe("no-store");

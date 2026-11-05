@@ -51,6 +51,8 @@ export interface PreviewPost {
 export interface AccountPreview {
   profile: PreviewProfile;
   posts: PreviewPost[];
+  /** Pinterest Trial: posts come from the sandbox, which doesn't list public Pins. */
+  sandbox: boolean;
   fetchedAt: string;
 }
 
@@ -197,6 +199,7 @@ export function createPreviewService(deps: {
           hasAvatar: images.has("avatar"),
         },
         posts,
+        sandbox: false,
         fetchedAt: deps.now().toISOString(),
       },
     };
@@ -242,6 +245,7 @@ export function createPreviewService(deps: {
           hasAvatar: images.has("avatar"),
         },
         posts,
+        sandbox: base !== deps.endpoints.pinterestApi,
         fetchedAt: deps.now().toISOString(),
       },
     };

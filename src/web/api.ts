@@ -372,6 +372,7 @@ export interface AccountPreview {
     avatar: string | null;
   };
   posts: { key: string; url: string | null; postedAt: string | null; kind: "photo" | "carousel" | "video" | "pin"; image: string }[];
+  sandbox: boolean;
   fetchedAt: string;
 }
 /** Profile and recent posts from the platform, read-only. */
