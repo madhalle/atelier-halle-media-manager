@@ -227,3 +227,36 @@ test("backs up from the Backups panel and checks the backup", async ({ page, ser
   await dialog.locator("summary").click();
   await expect(dialog.locator("pre").last()).toContainText(/npm run backup -- restore \d{8}-\d{6}-\d{3}-manual --env test/);
 });
+
+test("clicking outside a dialog closes it, like Escape; clicks inside don't", async ({ page, server }) => {
+  await server.signIn(page);
+  const dialog = page.getByRole("dialog", { name: "Add account" });
+  await page.getByRole("button", { name: "+ Add account" }).first().click();
+  await expect(dialog).toBeVisible();
+
+  // Inside, including dragging from inside out to the backdrop, keeps it open.
+  await dialog.getByRole("heading", { name: "Add account" }).click();
+  const box = (await dialog.boundingBox())!;
+  await page.mouse.move(box.x + 20, box.y + 20);
+  await page.mouse.down();
+  await page.mouse.move(5, 5);
+  await page.mouse.up();
+  await expect(dialog).toBeVisible();
+
+  // Outside on the backdrop closes it.
+  await page.mouse.click(5, 5);
+  await expect(dialog).toBeHidden();
+});
+
+test("clicking outside a confirmation cancels it", async ({ page, server }) => {
+  await server.signIn(page);
+  await createAccountsViaApi(page, [{ platform: "instagram", displayName: "Keep me" }]);
+  await page.reload();
+  await page.getByRole("button", { name: "Archive account…" }).click();
+  const confirm = page.getByRole("dialog");
+  await expect(confirm).toBeVisible();
+  await page.mouse.click(5, 5);
+  await expect(confirm).toBeHidden();
+  await expect(tab(page, "Keep me")).toBeVisible(); // not archived
+  await expect(page.locator("main")).not.toContainText("Archived");
+});

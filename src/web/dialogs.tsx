@@ -12,6 +12,14 @@ interface ModalProps {
 export function Modal({ open, title, onCancel, children }: ModalProps) {
   const ref = useRef<HTMLDialogElement>(null);
   const titleId = useId();
+  // A click outside the dialog box (on the backdrop) cancels, like Escape. Both the
+  // press and the release must be outside, so dragging out of a text field doesn't close it.
+  const pressedOutside = useRef(false);
+  const outside = (e: { target: EventTarget; currentTarget: HTMLDialogElement; clientX: number; clientY: number }) => {
+    if (e.target !== e.currentTarget) return false;
+    const r = e.currentTarget.getBoundingClientRect();
+    return e.clientX < r.left || e.clientX > r.right || e.clientY < r.top || e.clientY > r.bottom;
+  };
   useEffect(() => {
     const d = ref.current;
     if (!d) return;
@@ -25,6 +33,14 @@ export function Modal({ open, title, onCancel, children }: ModalProps) {
       onCancel={(e) => {
         e.preventDefault();
         onCancel();
+      }}
+      onPointerDown={(e) => {
+        pressedOutside.current = outside(e);
+      }}
+      onClick={(e) => {
+        const close = pressedOutside.current && e.detail > 0 && outside(e);
+        pressedOutside.current = false;
+        if (close) onCancel();
       }}
     >
       <h2 id={titleId}>{title}</h2>
