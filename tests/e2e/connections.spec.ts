@@ -21,6 +21,15 @@ async function setUpPlatforms(page: Page) {
   return dialog;
 }
 
+/** Waits until a connected account's preview has finished loading, images included. */
+async function previewSettled(page: Page) {
+  const preview = page.locator(".account-preview");
+  await expect(preview).toHaveAttribute("aria-busy", "false");
+  await expect
+    .poll(() => preview.locator("img").evaluateAll((imgs) => imgs.every((i) => (i as unknown as { complete: boolean }).complete)))
+    .toBe(true);
+}
+
 /** Answers the platform's sign-in page by redirecting back with an authorization code. */
 async function approveOn(page: Page, authorizeOrigin: string, code = "good-code") {
   await page.route(`${authorizeOrigin}/**`, async (route) => {
@@ -59,6 +68,7 @@ test("connects an Instagram Business account through the real callback flow", as
 
   // Back in the app on the canonical origin, with the code removed from the address bar.
   await expect(page.locator("main")).toContainText("Connected as @atelierhalle (business)", { timeout: 15_000 });
+  await previewSettled(page);
   expect(page.url()).not.toContain("code=");
   expect(new URL(page.url()).hostname).toBe("127.0.0.1");
   await expect(page.locator("main")).toContainText("Pending schedules are paused until you review them.");
@@ -83,7 +93,39 @@ test("connects Instagram through a business portfolio token by choosing the acco
   await page.getByLabel("Instagram account").selectOption({ label: "@studio_second" });
   await page.getByRole("button", { name: "Connect this account" }).click();
   await expect(page.locator("main")).toContainText("Connected as @studio_second (business)");
+  await previewSettled(page);
   expect(await page.content()).not.toContain(BUSINESS_TOKEN);
+});
+
+test("a connected account shows its profile and recent posts, proxied through the app", async ({ page, server, providers }) => {
+  await server.signIn(page);
+  await createAccountsViaApi(page, [{ platform: "instagram", displayName: "Studio" }]);
+  await page.reload();
+  await page.getByRole("button", { name: "Platform setup" }).click();
+  const dialog = page.getByRole("dialog", { name: "Platform setup" });
+  const biz = dialog.locator("form").filter({ hasText: "Instagram (Meta business portfolio)" });
+  await biz.getByLabel("System-user access token").fill(BUSINESS_TOKEN);
+  await biz.getByRole("button", { name: "Save" }).click();
+  await expect(biz).toContainText("· set up");
+  await dialog.getByRole("button", { name: "Close" }).click();
+  await page.reload();
+  await page.getByRole("button", { name: "Connect Instagram account" }).click();
+  await page.getByLabel("Instagram account").selectOption({ label: "@atelierhalle (Atelier Halle)" });
+  await page.getByRole("button", { name: "Connect this account" }).click();
+
+  const preview = page.locator(".account-preview");
+  await expect(preview.getByRole("heading", { name: "Atelier Hallé" })).toBeVisible();
+  await expect(preview).toContainText("Jewellery, made by hand.");
+  await expect(preview.getByRole("link", { name: "View on Instagram ↗" })).toHaveAttribute("href", "https://www.instagram.com/atelierhalle/");
+  const thumbs = preview.locator(".preview-grid img");
+  await expect(thumbs).toHaveCount(3);
+  // Images load from the app itself (strict CSP), never from the platform's CDN.
+  await expect.poll(() => thumbs.first().evaluate((img) => (img as unknown as { complete: boolean; naturalWidth: number }).complete && (img as unknown as { naturalWidth: number }).naturalWidth)).toBe(360);
+  for (const src of await thumbs.evaluateAll((imgs) => imgs.map((i) => (i as unknown as { src: string }).src))) {
+    expect(new URL(src).origin).toBe(server.origin);
+  }
+  await previewSettled(page);
+  expect(await page.content()).not.toContain(providers.state.cdn.origin);
 });
 
 test("connects by Instagram account ID when Meta lists no accounts", async ({ page, server, providers }) => {
@@ -104,6 +146,7 @@ test("connects by Instagram account ID when Meta lists no accounts", async ({ pa
   await page.getByLabel("Instagram account ID").fill("17841400000000001");
   await page.getByRole("button", { name: "Connect this account" }).click();
   await expect(page.locator("main")).toContainText("Connected as @atelierhalle (business)");
+  await previewSettled(page);
 });
 
 test("refuses a personal Instagram account with an explanation", async ({ page, server, providers }) => {
@@ -129,6 +172,7 @@ test("connects Pinterest and disconnects with a clear follow-up", async ({ page,
   await approveOn(page, "https://www.pinterest.com");
   await page.getByRole("button", { name: "Connect Pinterest account" }).click();
   await expect(page.locator("main")).toContainText("Connected as @atelierhalle (business)", { timeout: 15_000 });
+  await previewSettled(page);
 
   await page.getByRole("button", { name: "Disconnect…" }).click();
   await page.getByRole("dialog").getByRole("button", { name: "Disconnect" }).click();

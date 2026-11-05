@@ -8,6 +8,8 @@ export interface HttpResponse {
   headers: Headers;
   /** Parsed JSON, or null when the body wasn't JSON. */
   json: unknown;
+  /** The raw body (for images). */
+  body: Uint8Array;
 }
 
 export class HttpFailure extends Error {
@@ -25,6 +27,8 @@ export interface HttpRequest {
   headers?: Record<string, string>;
   body?: string | Uint8Array;
   timeoutMs?: number;
+  /** Response size cap; defaults to 2 MB. */
+  maxBytes?: number;
 }
 
 export interface HttpClient {
@@ -62,10 +66,11 @@ export function createHttpClient(opts: {
         const timeout = err instanceof Error && (err.name === "TimeoutError" || err.name === "AbortError");
         throw new HttpFailure(timeout ? "timeout" : "network", timeout ? `No response from ${url.host} in time.` : `Couldn't reach ${url.host}.`);
       }
+      const max = req.maxBytes ?? MAX_RESPONSE_BYTES;
       const declared = Number(res.headers.get("content-length") ?? 0);
-      if (declared > MAX_RESPONSE_BYTES) throw new HttpFailure("too_large", `Response from ${url.host} was too large.`);
+      if (declared > max) throw new HttpFailure("too_large", `Response from ${url.host} was too large.`);
       const buf = new Uint8Array(await res.arrayBuffer());
-      if (buf.byteLength > MAX_RESPONSE_BYTES) throw new HttpFailure("too_large", `Response from ${url.host} was too large.`);
+      if (buf.byteLength > max) throw new HttpFailure("too_large", `Response from ${url.host} was too large.`);
       let json: unknown = null;
       if (buf.byteLength > 0) {
         try {
@@ -74,7 +79,7 @@ export function createHttpClient(opts: {
           json = null;
         }
       }
-      return { status: res.status, headers: res.headers, json };
+      return { status: res.status, headers: res.headers, json, body: buf };
     },
   };
 }

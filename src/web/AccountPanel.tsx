@@ -14,6 +14,7 @@ import {
   type Account,
   type BusinessInstagramAccount,
 } from "./api.ts";
+import { AccountPreview } from "./AccountPreview.tsx";
 import { useDirty, useGuard } from "./dialogs.tsx";
 import { PlatformIcon } from "./icons.tsx";
 import { PostsSection } from "./Posts.tsx";
@@ -82,6 +83,8 @@ export function AccountPanel({ account: a, accounts, openPostId, onOpenPost, onN
           )}
         </section>
       )}
+
+      {!a.archived && !openPostId && a.connection.state === "connected" && identity?.accountType !== "SIMULATED" && <AccountPreview account={a} />}
 
       <PostsSection account={a} accounts={accounts} openPostId={openPostId} onOpenPost={onOpenPost} onNotice={onNotice} />
 

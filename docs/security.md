@@ -197,6 +197,15 @@ The SQLite database is not separately encrypted.
   - Instagram via a business portfolio (system-user token): `instagram_basic`,
     `instagram_content_publish`, `business_management`. Ads, messaging and
     comment permissions that Meta's default configuration includes are removed.
+- **Account previews** (profile and recent posts) are read-only. The page's
+  CSP stays `img-src 'self'`: the server fetches each image through a
+  separate HTTP client that may only reach HTTPS `*.cdninstagram.com`,
+  `*.fbcdn.net` and `i.pinimg.com` (no redirects, 10 MB cap, `image/*` only),
+  re-encodes it with sharp, and serves it by an opaque key. Image URLs come
+  only from the platform's API response; the browser can't supply one, so the
+  route can't be used to make the server fetch arbitrary addresses. Nothing is
+  written to disk. Pinterest data isn't kept (its developer guidelines say to
+  call the API each time) and Pins are shown uncropped with links back.
 - **System-user tokens** don't expire. The token is entered once in Platform
   setup, stored only in the Keychain (one copy), and never returned by the API.
   Connected accounts store only a reference to it, so removing it in Platform

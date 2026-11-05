@@ -361,6 +361,22 @@ export const listBusinessInstagramAccounts = (accountId: string) =>
   request<{ accounts: BusinessInstagramAccount[]; missing: string[] }>("GET", `/api/accounts/${accountId}/business-instagram-accounts`);
 export const connectBusinessInstagram = (accountId: string, instagramUserId: string) =>
   request<{ account: Account }>("POST", `/api/accounts/${accountId}/connect-business`, { instagramUserId }).then((r) => r.account);
+export interface AccountPreview {
+  profile: {
+    username: string | null;
+    name: string | null;
+    bio: string | null;
+    website: string | null;
+    postCount: number | null;
+    url: string | null;
+    avatar: string | null;
+  };
+  posts: { key: string; url: string | null; postedAt: string | null; kind: "photo" | "carousel" | "video" | "pin"; image: string }[];
+  fetchedAt: string;
+}
+/** Profile and recent posts from the platform, read-only. */
+export const getAccountPreview = (accountId: string, refresh = false) =>
+  request<AccountPreview>("GET", `/api/accounts/${accountId}/preview${refresh ? "?refresh=1" : ""}`);
 export const disconnectAccount = (accountId: string) =>
   request<{ account: Account; credentialRemoved: boolean; followUp: string }>("POST", `/api/accounts/${accountId}/disconnect`, {});
 

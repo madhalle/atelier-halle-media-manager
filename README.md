@@ -13,6 +13,9 @@ captions and crops, and posts that go out on time, exactly once.
 - **Multiple accounts, one library.** Add any number of Instagram and
   Pinterest accounts. Upload photos once (deduplicated by content hash) and
   reuse them across accounts.
+- **Recognisable accounts.** Each connected tab shows the account's profile
+  and most recent posts, read live from the platform and proxied through the
+  app so the page's strict CSP never loosens.
 - **Single photos and carousels.** Up to 20 photos per Instagram carousel and
   5 per Pinterest carousel Pin, with add, remove and reorder.
 - **Platform-aware composer.** Captions, alt text, Pin titles, links and
@@ -78,7 +81,7 @@ bounded, jittered backoff. Details: [docs/scheduling.md](docs/scheduling.md).
 pruned when no longer needed, a disk-space guard, and backups that hard-link
 immutable photos so they take no extra space.
 
-**Tested like it matters.** 215 unit and integration tests and 33 Playwright
+**Tested like it matters.** 225 unit and integration tests and 35 Playwright
 browser tests. Platform APIs are exercised against loopback fakes that verify
 what the app sends (including R2 request signatures), so the suite never touches a
 real account. Security checks were mutation-tested: each was deliberately broken

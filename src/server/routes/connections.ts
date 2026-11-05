@@ -8,6 +8,7 @@ import { PlatformError } from "../../domain/publishing.ts";
 import type { R2Stager } from "../../delivery/r2.ts";
 import type { ConnectionService } from "../../platforms/connect.ts";
 import type { PinterestAdapter } from "../../platforms/pinterest.ts";
+import type { PreviewService } from "../../platforms/preview.ts";
 import type { AccountsRepo } from "../../storage/accounts-repo.ts";
 import type { PlatformConfig } from "../../storage/platform-config.ts";
 import type { PostsRepo } from "../../storage/posts-repo.ts";
@@ -20,6 +21,8 @@ const KindParams = z.object({ kind: z.enum(["instagram", "pinterest", "r2"]) });
 const CompleteBody = z
   .object({ state: z.string().min(16).max(200), code: z.string().min(1).max(2048).optional(), error: z.string().max(200).optional() })
   .strict();
+const PreviewImageParams = z.object({ id: z.uuid(), key: z.string().regex(/^(avatar|p\d{1,2})$/) });
+const PreviewQuery = z.object({ refresh: z.enum(["1"]).optional() }).strict();
 const BusinessConnectBody = z.object({ instagramUserId: z.string().regex(/^\d{1,30}$/) }).strict();
 const BoardBody = z.object({ revision: z.number().int().positive(), boardId: z.string().regex(/^\d{1,30}$/) }).strict();
 
@@ -29,6 +32,7 @@ export interface ConnectionRouteDeps {
   config: PlatformConfig;
   connections: ConnectionService;
   pinterest: PinterestAdapter;
+  previews: PreviewService;
   r2: R2Stager;
   keychainStatus: () => { ok: boolean; reason: string | null; kind: "keychain" | "memory" };
   livePublishing: boolean;
@@ -95,7 +99,43 @@ export function registerConnectionRoutes(api: FastifyInstance, d: ConnectionRout
   api.post("/accounts/:id/disconnect", async (req) => {
     const { id } = IdParams.parse(req.params);
     const r = await d.connections.disconnect(id);
+    d.previews.forget(id);
     return { account: toAccountView(r.account), credentialRemoved: r.credentialRemoved, followUp: r.followUp };
+  });
+
+  // Read-only profile and recent posts, so a tab is recognisable. Images are
+  // proxied by key; the browser never supplies a URL.
+  api.get("/accounts/:id/preview", async (req) => {
+    const { id } = IdParams.parse(req.params);
+    const { refresh } = PreviewQuery.parse(req.query);
+    try {
+      const preview = await d.previews.preview(d.accounts.get(id), { refresh: refresh === "1" });
+      // The version query only busts the browser cache when the preview changes.
+      const img = (key: string) => `/api/accounts/${id}/preview/images/${key}?v=${Date.parse(preview.fetchedAt)}`;
+      return {
+        ...preview,
+        profile: { ...preview.profile, avatar: preview.profile.hasAvatar ? img("avatar") : null },
+        posts: preview.posts.map((p) => ({ ...p, image: img(p.key) })),
+      };
+    } catch (err) {
+      if (err instanceof PlatformError) throw new DomainError("invalid_state", err.safeMessage);
+      throw err;
+    }
+  });
+
+  api.get("/accounts/:id/preview/images/:key", async (req, reply) => {
+    const { id, key } = PreviewImageParams.parse(req.params);
+    const account = d.accounts.get(id);
+    try {
+      const img = await d.previews.image(account, key);
+      return reply
+        .type(img.type)
+        .header("cache-control", account.platform === "pinterest" ? "no-store" : "private, max-age=600")
+        .send(img.bytes);
+    } catch (err) {
+      if (err instanceof PlatformError) throw new DomainError("not_found", err.safeMessage);
+      throw err;
+    }
   });
 
   api.get("/accounts/:id/boards", async (req) => {

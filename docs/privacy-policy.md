@@ -16,6 +16,10 @@ Instagram APIs to access only what it needs to publish:
 - Basic account details: account ID, username, display name, profile
   picture link and account type, to confirm the right account is connected.
 - Pinterest boards, so a board can be chosen for each Pin.
+- The account's public profile (name, bio, website and profile picture) and
+  its most recent posts or Pins, shown only inside the app so the owner can
+  recognize each connected account. Each one links back to Instagram or
+  Pinterest.
 - Permission to create Pins and Instagram posts on the connected account.
 
 The app does not read followers, messages, analytics or other people's data,
@@ -49,6 +53,9 @@ advertising, profiling, analytics, or training machine-learning models.
   the account's record until the owner deletes the app's data.
 - For published posts, the app keeps the post's ID and link as a local
   posting history until the owner deletes it.
+- Profile previews and recent posts are never saved to disk. Instagram
+  previews are kept in memory for up to 10 minutes; Pinterest data is
+  requested fresh each time it's shown and isn't stored.
 
 ## Sharing
 

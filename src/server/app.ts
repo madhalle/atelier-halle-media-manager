@@ -194,6 +194,7 @@ export async function buildApp(deps: AppDeps): Promise<FastifyInstance> {
       config: services.config,
       connections: services.connections,
       pinterest: services.pinterest,
+      previews: services.previews,
       r2: services.stager,
       keychainStatus: deps.keychainStatus ?? (() => ({ ok: true, reason: null, kind: deps.credentials.kind })),
       livePublishing: config.livePublishing,

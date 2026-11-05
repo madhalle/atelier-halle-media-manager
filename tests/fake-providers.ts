@@ -11,6 +11,7 @@ function parseAmzDate(s: string): Date {
 }
 import { createHmac } from "node:crypto";
 import type { Endpoints } from "../src/platforms/http.ts";
+import { jpeg } from "./images.ts";
 
 export interface Recorded {
   service: string;
@@ -21,7 +22,8 @@ export interface Recorded {
   body: string;
 }
 
-type Handler = (req: Recorded) => { status: number; json?: unknown; headers?: Record<string, string> } | Promise<{ status: number; json?: unknown; headers?: Record<string, string> }>;
+type Reply = { status: number; json?: unknown; raw?: Buffer; headers?: Record<string, string> };
+type Handler = (req: Recorded) => Reply | Promise<Reply>;
 
 async function serve(service: string, log: Recorded[], handler: Handler): Promise<{ server: Server; origin: string }> {
   const server = createServer(async (req, res) => {
@@ -32,7 +34,7 @@ async function serve(service: string, log: Recorded[], handler: Handler): Promis
     log.push(rec);
     const out = await handler(rec);
     res.writeHead(out.status, { "content-type": "application/json", ...out.headers });
-    res.end(out.json === undefined ? "" : JSON.stringify(out.json));
+    res.end(out.raw ?? (out.json === undefined ? "" : JSON.stringify(out.json)));
   });
   await new Promise<void>((r) => server.listen(0, "127.0.0.1", r));
   const addr = server.address();
@@ -86,6 +88,10 @@ export interface FakeState {
     lastMedia: { source_type: string; items?: unknown[] } | null;
   };
   r2: { objects: Map<string, string>; badSignatures: number };
+  /** Image host standing in for the platforms' CDNs (cdninstagram.com, i.pinimg.com). */
+  cdn: { origin: string };
+  /** Recent posts for account previews. */
+  recent: { instagram: { id: string; media_type: string; media_url?: string; thumbnail_url?: string; permalink: string; timestamp: string }[] };
 }
 
 export interface FakeProviders {
@@ -114,7 +120,22 @@ export async function startFakeProviders(): Promise<FakeProviders> {
     },
     pin: { accountType: "BUSINESS", id: "549755885175", tokenSeq: 0, createFails: null, pins: [], refreshValid: true, loseNextResponse: false, lastMedia: null },
     r2: { objects: new Map(), badSignatures: 0 },
+    cdn: { origin: "" },
+    recent: { instagram: [] },
   };
+
+  const photo = await jpeg(640, 800, { color: "#c9a27e" });
+  const cdn = await serve("cdn", log, (r) => {
+    if (r.path === "/img/not-an-image") return { status: 200, raw: Buffer.from("<html>nope</html>"), headers: { "content-type": "text/html" } };
+    if (r.path.startsWith("/img/")) return { status: 200, raw: photo, headers: { "content-type": "image/jpeg" } };
+    return { status: 404 };
+  });
+  state.cdn.origin = cdn.origin;
+  state.recent.instagram = [
+    { id: "17900000000000001", media_type: "CAROUSEL_ALBUM", media_url: `${cdn.origin}/img/a.jpg`, permalink: "https://www.instagram.com/p/AAA111/", timestamp: "2026-10-01T12:00:00+0000" },
+    { id: "17900000000000002", media_type: "IMAGE", media_url: `${cdn.origin}/img/b.jpg`, permalink: "https://www.instagram.com/p/BBB222/", timestamp: "2026-09-20T12:00:00+0000" },
+    { id: "17900000000000003", media_type: "VIDEO", thumbnail_url: `${cdn.origin}/img/c.jpg`, media_url: "https://video.example/v.mp4", permalink: "https://www.instagram.com/reel/CCC333/", timestamp: "2026-09-10T12:00:00+0000" },
+  ];
 
   const igApi = await serve("ig-api", log, (r) => {
     if (r.method === "POST" && r.path === "/oauth/access_token") {
@@ -127,6 +148,16 @@ export async function startFakeProviders(): Promise<FakeProviders> {
 
   // Content publishing: the same endpoints on graph.instagram.com and graph.facebook.com.
   const publishing: Handler = (r) => {
+    // Account preview: profile and recent media.
+    if (r.method === "GET" && r.path === `/v26.0/${state.ig.userId}` && r.query.get("fields")?.includes("biography")) {
+      return {
+        status: 200,
+        json: { id: state.ig.userId, username: "atelierhalle", name: "Atelier Hallé", biography: "Jewellery, made by hand.", website: "atelierhalle.com", profile_picture_url: `${state.cdn.origin}/img/avatar.jpg`, media_count: 13 },
+      };
+    }
+    if (r.method === "GET" && r.path === `/v26.0/${state.ig.userId}/media` && r.query.get("fields")?.includes("media_url")) {
+      return { status: 200, json: { data: state.recent.instagram } };
+    }
     if (r.method === "POST" && r.path === `/v26.0/${state.ig.userId}/media`) {
       const f = new URLSearchParams(r.body);
       if (f.get("is_carousel_item") === "true") {
@@ -205,7 +236,12 @@ export async function startFakeProviders(): Promise<FakeProviders> {
       };
     }
     if (!r.headers.authorization?.startsWith("Bearer pina_")) return { status: 401, json: { code: 2, message: "Authentication failed." } };
-    if (r.path === "/v5/user_account") return { status: 200, json: { id: state.pin.id, username: "atelierhalle", account_type: state.pin.accountType, business_name: "Atelier Halle" } };
+    if (r.path === "/v5/user_account") {
+      return { status: 200, json: { id: state.pin.id, username: "atelierhalle", account_type: state.pin.accountType, business_name: "Atelier Halle", about: "Jewellery", profile_image: `${state.cdn.origin}/img/pin-avatar.jpg`, pin_count: state.pin.pins.length } };
+    }
+    if (r.method === "GET" && r.path === "/v5/pins") {
+      return { status: 200, json: { items: state.pin.pins.map((p) => ({ ...p, media: { media_type: "image", images: { "600x": { width: 600, height: 800, url: `${state.cdn.origin}/img/pin-${p.id}.jpg` } } } })), bookmark: null } };
+    }
     if (r.path === "/v5/boards") return { status: 200, json: { items: [{ id: "1099652335", name: "Collections", privacy: "PUBLIC" }], bookmark: null } };
     if (r.method === "POST" && r.path === "/v5/pins") {
       if (!sandbox) return { status: 403, json: { code: 3, message: "Trial apps must use the sandbox." } };
@@ -281,7 +317,7 @@ export async function startFakeProviders(): Promise<FakeProviders> {
     return { status: r.method === "DELETE" ? 204 : 200 };
   });
 
-  const servers = [igApi, igGraph, fbGraph, pinApi, pinSandbox, r2];
+  const servers = [cdn, igApi, igGraph, fbGraph, pinApi, pinSandbox, r2];
   return {
     state,
     endpoints: {
