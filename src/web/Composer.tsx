@@ -376,7 +376,7 @@ export function Composer({ post, account, defaultTimezone, onNotice, onSaved, on
                 aren’t supported.
               </p>
             ) : (
-              <p>Board sections, video Pins, and per-photo titles or links in carousel Pins aren’t included in this version.</p>
+              <p>Board sections, video Pins, and per-photo titles or links in carousel Pins aren’t included in this version. Tagged topics can’t be set: Pinterest’s API has no field for them, so Pinterest picks topics from the title and description.</p>
             )}
           </details>
         </section>
