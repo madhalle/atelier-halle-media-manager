@@ -1,6 +1,6 @@
 // Post editor for one destination post. Shows only fields the account's
 // platform supports, previews the real publishing derivative, and validates.
-import { useEffect, useId, useState, type FormEvent, type ReactNode } from "react";
+import { useEffect, useId, useRef, useState, type FormEvent, type ReactNode } from "react";
 import {
   ApiError,
   createBoard,
@@ -57,6 +57,9 @@ function useDebounced<T>(value: T, ms: number): T {
   return v;
 }
 
+/** How long typing must pause before a draft saves itself. */
+const AUTOSAVE_MS = 1200;
+
 interface Props {
   post: Post;
   account: Account;
@@ -97,12 +100,15 @@ export function Composer({ post, account, defaultTimezone, onNotice, onSaved, on
   const [fields, setFields] = useState<PostFields>(() => pick(post));
   const [crop, setCrop] = useState(() => ({ aspect: item?.cropAspect ?? "original", fx: item?.focusX ?? 0.5, fy: item?.focusY ?? 0.5 }));
   const [saving, setSaving] = useState(false);
+  const savingRef = useRef(false);
   const [error, setError] = useState<string | null>(null);
 
   const cropDirty = !!item && (crop.aspect !== item.cropAspect || Math.abs(crop.fx - item.focusX) > 0.004 || Math.abs(crop.fy - item.focusY) > 0.004);
   const fieldsDirty = (Object.keys(fields) as (keyof PostFields)[]).some((k) => fields[k] !== post[k]);
   const dirty = editable && (fieldsDirty || cropDirty);
   useDirty(`post:${post.id}`, dirty);
+  // Only drafts save themselves: edits to a scheduled post stay explicit.
+  const autosave = editable && post.status === "draft";
 
   const debouncedCrop = useDebounced(crop, 250);
   const previewSrc = item ? derivativeUrl(item.asset.id, platform, debouncedCrop.aspect, debouncedCrop.fx, debouncedCrop.fy) : null;
@@ -179,6 +185,7 @@ export function Composer({ post, account, defaultTimezone, onNotice, onSaved, on
   const save = async (e?: FormEvent) => {
     e?.preventDefault();
     if (!dirty) return post;
+    savingRef.current = true;
     setSaving(true);
     setError(null);
     try {
@@ -189,11 +196,29 @@ export function Composer({ post, account, defaultTimezone, onNotice, onSaved, on
       setError(err instanceof ApiError ? err.message : "Could not save the draft.");
       return null;
     } finally {
+      savingRef.current = false;
       setSaving(false);
     }
   };
 
+  // Re-arms on each edit and after each successful save (a new revision), which
+  // picks up typing that happened mid-save. A failed save waits for the next edit
+  // rather than retrying in a loop.
+  useEffect(() => {
+    if (!autosave || !dirty) return;
+    const t = setTimeout(() => {
+      if (!savingRef.current) void save();
+    }, AUTOSAVE_MS);
+    return () => clearTimeout(t);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [fields, crop, post.revision, autosave]);
+
   const close = async () => {
+    // A draft with pending edits saves on the way out instead of asking to discard.
+    if (autosave && dirty && !savingRef.current && (await save())) {
+      onClose();
+      return;
+    }
     if (await confirmDiscard()) onClose();
   };
 
@@ -423,6 +448,11 @@ export function Composer({ post, account, defaultTimezone, onNotice, onSaved, on
             <button type="submit" className="primary" disabled={!dirty || saving}>
               {saving ? "Saving…" : "Save draft"}
             </button>
+          )}
+          {autosave && (
+            <span className="hint" role="status">
+              {saving ? "" : dirty ? "Unsaved changes" : "All changes saved"}
+            </span>
           )}
           <button type="button" onClick={() => void copy()} disabled={saving}>
             Copy to accounts…

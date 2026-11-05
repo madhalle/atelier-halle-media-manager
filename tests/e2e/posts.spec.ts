@@ -135,17 +135,31 @@ test("switching accounts or leaving the composer never silently drops unsaved te
   await newPostFromUpload(page, { name: "a.jpg", buffer: await jpeg(1080, 1080) });
   await page.getByLabel("Caption").fill("Unsaved words");
 
+  // Before autosave runs, switching away still asks.
   await tab(page, "Beta").click();
   const discard = page.getByRole("dialog", { name: "Discard unsaved changes?" });
   await discard.getByRole("button", { name: "Keep editing" }).click();
   await expect(page.getByLabel("Caption")).toHaveValue("Unsaved words");
 
+  // Leaving a draft saves it rather than asking.
+  await page.getByLabel("Caption").fill("Saved on the way out");
   await page.getByRole("button", { name: "← Back to posts" }).click();
-  await expect(discard).toBeVisible();
-  await discard.getByRole("button", { name: "Keep editing" }).click();
-  await page.getByRole("button", { name: "Save draft" }).click();
-  await page.getByRole("button", { name: "← Back to posts" }).click();
-  await expect(page.locator(".post-card")).toContainText("Unsaved words");
+  await expect(discard).toHaveCount(0);
+  await expect(page.locator(".post-card")).toContainText("Saved on the way out");
+});
+
+test("drafts save themselves shortly after typing stops", async ({ page, server }) => {
+  await server.signIn(page);
+  await createAccountsViaApi(page, [{ platform: "instagram", displayName: "Alpha" }]);
+  await page.reload();
+  await newPostFromUpload(page, { name: "auto.jpg", buffer: await jpeg(1080, 1080) });
+  await page.getByLabel("Caption").fill("Typed, never saved by hand");
+  await expect(page.locator(".composer-actions").getByRole("status")).toHaveText("Unsaved changes");
+  await expect(page.locator(".composer-actions").getByRole("status")).toHaveText("All changes saved");
+  await expect(page.getByRole("button", { name: "Save draft" })).toBeDisabled();
+
+  await page.reload(); // reopens the draft from the server
+  await expect(page.getByLabel("Caption")).toHaveValue("Typed, never saved by hand");
 });
 
 test("deletes a draft but keeps its photo in the library", async ({ page, server }) => {
