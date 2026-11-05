@@ -81,6 +81,9 @@ export interface FakeState {
     tokenSeq: number;
     createFails: null | { status: number; json?: unknown };
     pins: { id: string; title: string; description: string; created_at: string }[];
+    boards: { id: string; name: string; privacy: string }[];
+    /** Refuse board creation, as for a token without boards:write. */
+    boardsWriteDenied: boolean;
     refreshValid: boolean;
     /** Create the Pin but answer 502, as if the response were lost. */
     loseNextResponse: boolean;
@@ -118,7 +121,7 @@ export async function startFakeProviders(): Promise<FakeProviders> {
         { id: "17841400000000002", username: "studio_second" },
       ],
     },
-    pin: { accountType: "BUSINESS", id: "549755885175", tokenSeq: 0, createFails: null, pins: [], refreshValid: true, loseNextResponse: false, lastMedia: null },
+    pin: { accountType: "BUSINESS", id: "549755885175", tokenSeq: 0, createFails: null, pins: [], boards: [{ id: "1099652335", name: "Collections", privacy: "PUBLIC" }], boardsWriteDenied: false, refreshValid: true, loseNextResponse: false, lastMedia: null },
     r2: { objects: new Map(), badSignatures: 0 },
     cdn: { origin: "" },
     recent: { instagram: [] },
@@ -232,7 +235,7 @@ export async function startFakeProviders(): Promise<FakeProviders> {
       const n = ++state.pin.tokenSeq;
       return {
         status: 200,
-        json: { access_token: `pina_${sandbox ? "" : "PROD"}TESTACCESS${n}`, refresh_token: `pinr_TESTREFRESH${n}`, token_type: "bearer", expires_in: 2592000, refresh_token_expires_in: 5184000, scope: "boards:read,pins:read,pins:write,user_accounts:read" },
+        json: { access_token: `pina_${sandbox ? "" : "PROD"}TESTACCESS${n}`, refresh_token: `pinr_TESTREFRESH${n}`, token_type: "bearer", expires_in: 2592000, refresh_token_expires_in: 5184000, scope: "boards:read,boards:write,pins:read,pins:write,user_accounts:read" },
       };
     }
     // As on Pinterest, a token works only in the environment (sandbox or production) that issued it.
@@ -244,7 +247,15 @@ export async function startFakeProviders(): Promise<FakeProviders> {
     if (r.method === "GET" && r.path === "/v5/pins") {
       return { status: 200, json: { items: state.pin.pins.map((p) => ({ ...p, media: { media_type: "image", images: { "600x": { width: 600, height: 800, url: `${state.cdn.origin}/img/pin-${p.id}.jpg` } } } })), bookmark: null } };
     }
-    if (r.path === "/v5/boards") return { status: 200, json: { items: [{ id: "1099652335", name: "Collections", privacy: "PUBLIC" }], bookmark: null } };
+    if (r.method === "POST" && r.path === "/v5/boards") {
+      if (state.pin.boardsWriteDenied) return { status: 403, json: { code: 3, message: "Not authorized." } };
+      const b = JSON.parse(r.body) as { name?: string; privacy?: string };
+      if (!b.name) return { status: 400, json: { code: 1, message: "Board name is required." } };
+      const board = { id: `10996523${state.pin.boards.length + 40}`, name: b.name, privacy: b.privacy ?? "PUBLIC" };
+      state.pin.boards.push(board);
+      return { status: 201, json: board };
+    }
+    if (r.path === "/v5/boards") return { status: 200, json: { items: state.pin.boards, bookmark: null } };
     if (r.method === "POST" && r.path === "/v5/pins") {
       if (!sandbox) return { status: 403, json: { code: 3, message: "Trial apps must use the sandbox." } };
       if (state.pin.createFails) return state.pin.createFails;

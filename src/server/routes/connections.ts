@@ -24,6 +24,7 @@ const CompleteBody = z
 const PreviewImageParams = z.object({ id: z.uuid(), key: z.string().regex(/^(avatar|p\d{1,2})$/) });
 const PreviewQuery = z.object({ refresh: z.enum(["1"]).optional() }).strict();
 const BusinessConnectBody = z.object({ instagramUserId: z.string().regex(/^\d{1,30}$/) }).strict();
+const NewBoardBody = z.object({ name: z.string().trim().min(1, "Give the board a name.").max(100, "Board names can be up to 100 characters.") }).strict();
 const BoardBody = z.object({ revision: z.number().int().positive(), boardId: z.string().regex(/^\d{1,30}$/) }).strict();
 
 export interface ConnectionRouteDeps {
@@ -145,6 +146,20 @@ export function registerConnectionRoutes(api: FastifyInstance, d: ConnectionRout
     if (account.connectionState !== "connected") throw new DomainError("invalid_state", "Connect this account to load its boards.");
     try {
       return { boards: await d.pinterest.listBoards(account) };
+    } catch (err) {
+      if (err instanceof PlatformError) throw new DomainError("invalid_state", err.safeMessage);
+      throw err;
+    }
+  });
+
+  api.post("/accounts/:id/boards", async (req) => {
+    const { id } = IdParams.parse(req.params);
+    const { name } = NewBoardBody.parse(req.body);
+    const account = d.accounts.get(id);
+    if (account.platform !== "pinterest") throw new DomainError("validation", "Boards are a Pinterest feature.");
+    if (account.connectionState !== "connected") throw new DomainError("invalid_state", "Connect this account to create a board.");
+    try {
+      return { board: await d.pinterest.createBoard(account, name) };
     } catch (err) {
       if (err instanceof PlatformError) throw new DomainError("invalid_state", err.safeMessage);
       throw err;

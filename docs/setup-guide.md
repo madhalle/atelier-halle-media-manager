@@ -66,6 +66,8 @@ Each Pinterest account you'll post to should be a **business** account.
    you. Trial sign-ins get sandbox tokens, which Pinterest accepts only in the
    sandbox, so after switching *API access* reconnect each Pinterest account.
    The sandbox lists only sandbox Boards and Pins, not your public ones.
+   Create a board with **New board…** under *Board* in the Pin editor.
+   Accounts connected before this option existed need reconnecting first.
 4. Public Pins need **Standard** access. Apply from *My apps* with a screen
    recording of signing in through this app. Then switch *API access* to
    Standard.

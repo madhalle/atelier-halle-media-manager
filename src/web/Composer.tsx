@@ -3,6 +3,7 @@
 import { useEffect, useId, useState, type FormEvent, type ReactNode } from "react";
 import {
   ApiError,
+  createBoard,
   listBoards,
   setPostBoard,
   type Board,
@@ -574,6 +575,8 @@ function BoardPicker({ post, account, editable, dirty, onSaved }: { post: Post; 
   const id = useId();
   const [boards, setBoards] = useState<Board[] | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [newName, setNewName] = useState<string | null>(null);
+  const [creating, setCreating] = useState(false);
   const connected = account.connection.state === "connected";
 
   useEffect(() => {
@@ -582,6 +585,30 @@ function BoardPicker({ post, account, editable, dirty, onSaved }: { post: Post; 
       .then(setBoards)
       .catch((err: unknown) => setError(err instanceof ApiError ? err.message : "Couldn't load boards."));
   }, [account.id, connected]);
+
+  const choose = (boardId: string) => {
+    setError(null);
+    setPostBoard(post, boardId)
+      .then(onSaved)
+      .catch((err: unknown) => setError(err instanceof ApiError ? err.message : "Couldn't set the board."));
+  };
+
+  // Not a nested <form>: this sits inside the composer's form.
+  const create = async () => {
+    if (!newName?.trim()) return;
+    setCreating(true);
+    setError(null);
+    try {
+      const board = await createBoard(account.id, newName);
+      setBoards((bs) => [...(bs ?? []), board]);
+      setNewName(null);
+      choose(board.id);
+    } catch (err) {
+      setError(err instanceof ApiError ? err.message : "Couldn't create the board.");
+    } finally {
+      setCreating(false);
+    }
+  };
 
   if (!connected) {
     return (
@@ -601,12 +628,7 @@ function BoardPicker({ post, account, editable, dirty, onSaved }: { post: Post; 
         id={id}
         value={post.pinBoardId ?? ""}
         disabled={!editable || dirty || boards === null}
-        onChange={(e) => {
-          setError(null);
-          setPostBoard(post, e.target.value)
-            .then(onSaved)
-            .catch((err: unknown) => setError(err instanceof ApiError ? err.message : "Couldn't set the board."));
-        }}
+        onChange={(e) => choose(e.target.value)}
       >
         <option value="" disabled>
           {boards === null ? "Loading boards…" : "Choose a board"}
@@ -618,6 +640,41 @@ function BoardPicker({ post, account, editable, dirty, onSaved }: { post: Post; 
           </option>
         ))}
       </select>
+      {boards?.length === 0 && <p className="hint">This account has no boards yet.</p>}
+      {editable && !dirty && boards !== null && newName === null && (
+        <p>
+          <button type="button" onClick={() => setNewName("")}>
+            New board…
+          </button>
+        </p>
+      )}
+      {newName !== null && (
+        <div className="new-board">
+          <label htmlFor={`${id}-new`} className="field-label">
+            New board name
+          </label>
+          <input
+            id={`${id}-new`}
+            value={newName}
+            maxLength={100}
+            autoFocus
+            onChange={(e) => setNewName(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key !== "Enter") return;
+              e.preventDefault(); // Enter would otherwise submit the composer.
+              void create();
+            }}
+          />
+          <div className="setup-actions">
+            <button type="button" className="primary" disabled={creating || !newName.trim()} onClick={() => void create()}>
+              {creating ? "Creating…" : "Create board"}
+            </button>
+            <button type="button" onClick={() => setNewName(null)} disabled={creating}>
+              Cancel
+            </button>
+          </div>
+        </div>
+      )}
       {dirty && <p className="hint">Save your changes before changing the board.</p>}
       {error && (
         <p className="error" role="alert">

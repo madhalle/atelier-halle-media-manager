@@ -325,3 +325,4 @@ dialog:has(.setup) { width: min(46rem, calc(100vw - 2rem)); max-height: calc(100
 .preview-grid img { display: block; width: 100%; aspect-ratio: 1; object-fit: cover; border-radius: 4px; background: var(--line); }
 .preview-pinterest img { object-fit: contain; }
 .preview-badge { position: absolute; top: 4px; right: 6px; color: white; text-shadow: 0 0 3px rgb(0 0 0 / 0.8); font-size: 0.85rem; pointer-events: none; }
+.new-board { display: grid; gap: 0.4rem; margin-top: 0.5rem; }

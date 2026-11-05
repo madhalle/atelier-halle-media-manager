@@ -15,6 +15,7 @@ const PinCreated = z.object({ id: z.union([z.string(), z.number()]) });
 const PinList = z.object({
   items: z.array(z.object({ id: z.union([z.string(), z.number()]), created_at: z.string().optional(), title: z.string().nullable().optional(), description: z.string().nullable().optional() })),
 });
+const BoardCreated = z.object({ id: z.union([z.string(), z.number()]), name: z.string(), privacy: z.string().optional() });
 const BoardList = z.object({
   items: z.array(z.object({ id: z.union([z.string(), z.number()]), name: z.string(), privacy: z.string().optional() })),
   bookmark: z.string().nullable().optional(),
@@ -36,7 +37,10 @@ export function createPinterestAdapter(deps: { http: HttpClient; endpoints: Endp
     accept: "application/json",
   });
 
-  const adapter: PlatformAdapter & { listBoards(account: Pick<Account, "credentialRef">): Promise<Board[]> } = {
+  const adapter: PlatformAdapter & {
+    listBoards(account: Pick<Account, "credentialRef">): Promise<Board[]>;
+    createBoard(account: Pick<Account, "credentialRef">, name: string): Promise<Board>;
+  } = {
     platform: "pinterest",
     simulated: false,
 
@@ -122,6 +126,24 @@ export function createPinterestAdapter(deps: { http: HttpClient; endpoints: Endp
         if (!bookmark) break;
       }
       return boards;
+    },
+
+    async createBoard(account, name) {
+      if (!account.credentialRef) throw new PlatformError("auth_expired", "not_connected", "This account isn't connected.");
+      const res = await send(deps.http, {
+        method: "POST",
+        url: new URL("/v5/boards", base()),
+        headers: { ...(await auth({ credentialRef: account.credentialRef })), "content-type": "application/json" },
+        body: JSON.stringify({ name }),
+      });
+      if (res.status === 401 || res.status === 403) {
+        // Accounts connected before boards:write was requested lack it.
+        throw new PlatformError("auth_expired", `http_${res.status}`, "Pinterest didn't allow creating a board. Disconnect and connect this account again, and allow managing boards.");
+      }
+      if (res.status !== 200 && res.status !== 201) throw classifyResponse("pinterest", res, "create the board");
+      const b = BoardCreated.safeParse(res.json);
+      if (!b.success) throw new PlatformError("transient", "bad_board_response", "Pinterest answered, but not in the expected format.");
+      return { id: String(b.data.id), name: b.data.name, privacy: b.data.privacy ?? null };
     },
   };
   return adapter;

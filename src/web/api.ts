@@ -387,6 +387,8 @@ export interface Board {
   privacy: string | null;
 }
 export const listBoards = (accountId: string) => request<{ boards: Board[] }>("GET", `/api/accounts/${accountId}/boards`).then((r) => r.boards);
+export const createBoard = (accountId: string, name: string) =>
+  request<{ board: Board }>("POST", `/api/accounts/${accountId}/boards`, { name }).then((r) => r.board);
 export const setPostBoard = (post: Post, boardId: string) =>
   request<{ post: Post }>("POST", `/api/posts/${post.id}/board`, { revision: post.revision, boardId }).then((r) => r.post);
 

@@ -212,7 +212,8 @@ The SQLite database is not separately encrypted.
   setup stops publishing for all of them at once. Connecting re-checks that the
   token can reach the chosen account and has publish permission. Revoke it in
   Meta Business settings › System users.
-  - Pinterest: `user_accounts:read`, `boards:read`, `pins:read`, `pins:write`
+  - Pinterest: `user_accounts:read`, `boards:read`, `boards:write` (create a
+    board from the Pin editor), `pins:read`, `pins:write`
 - **Renewal** is serialized per account. Instagram tokens are renewed when
   less than 10 days remain (and at least 24 hours old); Pinterest when less
   than 1 day remains. Rotated refresh tokens are stored atomically.

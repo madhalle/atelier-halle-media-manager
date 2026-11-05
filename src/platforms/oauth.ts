@@ -221,7 +221,7 @@ const PinAccount = z.object({
   business_name: z.string().nullable().optional(),
 });
 
-export const PINTEREST_SCOPES = ["user_accounts:read", "boards:read", "pins:read", "pins:write"] as const;
+export const PINTEREST_SCOPES = ["user_accounts:read", "boards:read", "boards:write", "pins:read", "pins:write"] as const;
 
 export function pinterestOAuth(http: HttpClient, e: Endpoints, tier: () => "trial" | "standard"): OAuthProvider {
   const api = (path: string) => new URL(path, pinterestBase(e, tier()));

@@ -245,7 +245,7 @@ describe("connecting accounts (OAuth)", () => {
     await setupApps();
     const a = await account("pinterest");
     const { url, res } = await connect(a.id, "pinterest");
-    expect(url.searchParams.get("scope")).toBe("user_accounts:read,boards:read,pins:read,pins:write");
+    expect(url.searchParams.get("scope")).toBe("user_accounts:read,boards:read,boards:write,pins:read,pins:write");
     expect(res.statusCode).toBe(200);
     expect(fakes.calls("pin-sandbox", "/v5/oauth/token")[0]!.body).not.toContain(PIN_SECRET); // secret only in the Authorization header
 
@@ -304,6 +304,33 @@ describe("Pinterest boards", () => {
     const a = await account("pinterest");
     await connect(a.id, "pinterest");
     expect((await call("GET", `/api/accounts/${a.id}/boards`)).json().boards).toEqual([{ id: "1099652335", name: "Collections", privacy: "PUBLIC" }]);
+  });
+
+  it("creates a board in the environment the account signed in to, and it can then be chosen", async () => {
+    await setupApps();
+    const a = await account("pinterest");
+    await connect(a.id, "pinterest");
+    const res = await call("POST", `/api/accounts/${a.id}/boards`, { name: "  Rings  " });
+    expect(res.statusCode).toBe(200);
+    const board = res.json().board as { id: string; name: string };
+    expect(board.name).toBe("Rings");
+    const req = fakes.calls("pin-sandbox", "/v5/boards").find((c) => c.method === "POST")!;
+    expect(JSON.parse(req.body)).toEqual({ name: "Rings" });
+    expect(fakes.calls("pin-api")).toHaveLength(0);
+    expect((await call("GET", `/api/accounts/${a.id}/boards`)).json().boards).toContainEqual({ ...board, privacy: "PUBLIC" });
+
+    expect((await call("POST", `/api/accounts/${a.id}/boards`, { name: "   " })).statusCode).toBe(400);
+    expect((await call("POST", `/api/accounts/${a.id}/boards`, { name: "x".repeat(101) })).statusCode).toBe(400);
+  });
+
+  it("asks to reconnect when the connection can't create boards", async () => {
+    await setupApps();
+    const a = await account("pinterest");
+    await connect(a.id, "pinterest");
+    fakes.state.pin.boardsWriteDenied = true;
+    const res = await call("POST", `/api/accounts/${a.id}/boards`, { name: "Rings" });
+    expect(res.statusCode).toBe(409);
+    expect(res.json().message).toMatch(/connect this account again/);
   });
 });
 

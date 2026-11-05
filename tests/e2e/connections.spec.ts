@@ -3,6 +3,7 @@
 // would after the user approves; token exchange goes to loopback fakes.
 import type { Page } from "@playwright/test";
 import { BUSINESS_TOKEN, IG_SECRET, PIN_SECRET, R2 } from "../fake-providers.ts";
+import { jpeg } from "../images.ts";
 import { createAccountsViaApi, expect, test } from "./server.ts";
 
 async function setUpPlatforms(page: Page) {
@@ -178,6 +179,33 @@ test("connects Pinterest and disconnects with a clear follow-up", async ({ page,
   await page.getByRole("dialog").getByRole("button", { name: "Disconnect" }).click();
   await expect(page.locator("main")).toContainText("doesn't let apps revoke their own access");
   await expect(page.locator("main")).toContainText("Disconnected");
+});
+
+test("creates a Pinterest board from the Pin editor and chooses it", async ({ page, server, providers }) => {
+  await server.signIn(page);
+  await createAccountsViaApi(page, [{ platform: "pinterest", displayName: "Atelier Halle Pinterest" }]);
+  await page.reload();
+  const dialog = await setUpPlatforms(page);
+  await dialog.getByRole("button", { name: "Close" }).click();
+  await page.reload();
+  await approveOn(page, "https://www.pinterest.com");
+  await page.getByRole("button", { name: "Connect Pinterest account" }).click();
+  await expect(page.locator("main")).toContainText("Connected as @atelierhalle (business)", { timeout: 15_000 });
+  await previewSettled(page);
+
+  await page.getByRole("button", { name: "New post" }).click();
+  const library = page.getByRole("dialog");
+  await library.locator('input[type="file"]').setInputFiles([{ name: "ring.jpg", mimeType: "image/jpeg", buffer: await jpeg(1000, 1500) }]);
+  await page.getByRole("button", { name: "Use for new post: ring.jpg" }).click();
+  await expect(page.getByRole("heading", { name: /^Draft for / })).toBeVisible();
+
+  await page.getByRole("button", { name: "New board…" }).click();
+  await page.getByLabel("New board name").fill("Rings");
+  await page.getByLabel("New board name").press("Enter"); // creates the board, doesn't submit the draft
+  await expect(page.getByLabel("Board", { exact: true })).toHaveValue(/^\d+$/);
+  await expect(page.getByLabel("Board", { exact: true }).locator("option:checked")).toHaveText("Rings");
+  await expect(page.getByLabel("New board name")).toHaveCount(0);
+  expect(providers.state.pin.boards.map((b) => b.name)).toContain("Rings");
 });
 
 test("tests the R2 connection from Platform setup without showing the secret", async ({ page, server, providers }) => {
