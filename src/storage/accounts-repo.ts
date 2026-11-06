@@ -6,6 +6,7 @@ import {
   assertCanConnect,
   assertCanRestore,
   normalizeDisplayName,
+  PLATFORM_LABELS,
   type Account,
   type ConnectionState,
   type Platform,
@@ -29,6 +30,7 @@ interface AccountRow {
   identity_verified_at: string | null;
   credential_ref: string | null;
   schedules_need_review: 0 | 1;
+  setup_pending: 0 | 1;
   revision: number;
   created_at: string;
   updated_at: string;
@@ -55,6 +57,7 @@ function toAccount(r: AccountRow): Account {
           },
     credentialRef: r.credential_ref,
     schedulesNeedReview: r.schedules_need_review === 1,
+    setupPending: r.setup_pending === 1,
     revision: r.revision,
     createdAt: r.created_at,
     updatedAt: r.updated_at,
@@ -69,10 +72,10 @@ export function createAccountsRepo(db: Db, now: () => Date = () => new Date()) {
   const iso = () => now().toISOString();
 
   const selectAll = db.prepare<[], AccountRow>(
-    "SELECT * FROM accounts ORDER BY archived_at IS NOT NULL, sort_order, created_at",
+    "SELECT * FROM accounts WHERE setup_pending = 0 ORDER BY archived_at IS NOT NULL, sort_order, created_at",
   );
   const selectActive = db.prepare<[], AccountRow>(
-    "SELECT * FROM accounts WHERE archived_at IS NULL ORDER BY sort_order, created_at",
+    "SELECT * FROM accounts WHERE archived_at IS NULL AND setup_pending = 0 ORDER BY sort_order, created_at",
   );
   const selectOne = db.prepare<[string], AccountRow>("SELECT * FROM accounts WHERE id = ?");
   const selectIdentityOwner = db.prepare<[Platform, string], AccountRow>(
@@ -106,6 +109,18 @@ export function createAccountsRepo(db: Db, now: () => Date = () => new Date()) {
 
   const bump = "revision = revision + 1, updated_at = @now";
 
+  // Sort order is taken at creation, so a finished setup lands at the end of the list.
+  function insert(platform: Platform, displayName: string, setupPending: boolean): Account {
+    const id = randomUUID();
+    const t = iso();
+    db.prepare(
+      `INSERT INTO accounts (id, platform, display_name, sort_order, setup_pending, created_at, updated_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?)`,
+    ).run(id, platform, displayName, nextSortOrder.get()!.n, setupPending ? 1 : 0, t, t);
+    return require(id);
+  }
+  const deletePendingSetups = db.prepare("DELETE FROM accounts WHERE setup_pending = 1");
+
   return {
     list(opts: { includeArchived?: boolean } = {}): Account[] {
       return (opts.includeArchived ? selectAll : selectActive).all().map(toAccount);
@@ -115,17 +130,20 @@ export function createAccountsRepo(db: Db, now: () => Date = () => new Date()) {
       return require(id);
     },
 
+    /** A named tab that starts unconnected and is listed straight away (scripts and tests). */
     create(input: { platform: Platform; displayName: string }): Account {
-      const displayName = normalizeDisplayName(input.displayName);
-      const id = randomUUID();
-      const t = iso();
-      db.transaction(() => {
-        db.prepare(
-          `INSERT INTO accounts (id, platform, display_name, sort_order, created_at, updated_at)
-           VALUES (?, ?, ?, ?, ?, ?)`,
-        ).run(id, input.platform, displayName, nextSortOrder.get()!.n, t, t);
+      return insert(input.platform, normalizeDisplayName(input.displayName), false);
+    },
+
+    /**
+     * Starts adding an account: hidden until its first connection. Only one is
+     * being added at a time, so earlier abandoned ones are removed.
+     */
+    startSetup(platform: Platform): Account {
+      return db.transaction(() => {
+        deletePendingSetups.run();
+        return insert(platform, PLATFORM_LABELS[platform], true);
       })();
-      return require(id);
     },
 
     rename(id: string, displayName: string, expectedRevision?: number): Account {
@@ -134,6 +152,12 @@ export function createAccountsRepo(db: Db, now: () => Date = () => new Date()) {
         checkRevision(a, expectedRevision);
         db.prepare(`UPDATE accounts SET display_name = @name, ${bump} WHERE id = @id`).run({ id, name, now: iso() });
       });
+    },
+
+    /** Removes an account that never finished being added. */
+    discardSetup(id: string): void {
+      if (!require(id).setupPending) throw new DomainError("invalid_state", "Only an account that is still being added can be discarded.");
+      db.prepare("DELETE FROM accounts WHERE id = ?").run(id);
     },
 
     /** `orderedIds` must be exactly the current active accounts, in the new order. */
@@ -196,7 +220,7 @@ export function createAccountsRepo(db: Db, now: () => Date = () => new Date()) {
             `UPDATE accounts SET connection_state = 'connected', provider_account_id = @pid,
                provider_username = @username, provider_display_name = @pname, provider_avatar_url = @avatar,
                provider_account_type = @type, identity_verified_at = @verifiedAt, credential_ref = @cred,
-               schedules_need_review = 1, ${bump}
+               schedules_need_review = 1, setup_pending = 0, ${bump}
              WHERE id = @id`,
           ).run({
             id,

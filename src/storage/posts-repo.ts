@@ -127,6 +127,7 @@ export function createPostsRepo(db: Db, accounts: AccountsRepo, now: () => Date 
   function requireActiveAccount(id: string): Account {
     const account = accounts.get(id);
     if (account.archivedAt !== null) throw new DomainError("invalid_state", "Restore this account before adding posts to it.");
+    if (account.setupPending) throw new DomainError("invalid_state", "Connect this account before adding posts to it.");
     return account;
   }
 

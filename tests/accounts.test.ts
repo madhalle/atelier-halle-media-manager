@@ -84,6 +84,30 @@ describe("accounts repository", () => {
     expect(() => repo.rename(a.id, "Stale", a.revision)).toThrow(/changed in another window/);
   });
 
+  it("keeps an account being added out of the list until it connects", () => {
+    const a = repo.create({ platform: "instagram", displayName: "A" });
+    const adding = repo.startSetup("pinterest");
+    expect(adding.setupPending).toBe(true);
+    expect(repo.list({ includeArchived: true }).map((x) => x.id)).toEqual([a.id]);
+    expect(repo.reorder([a.id]).map((x) => x.id)).toEqual([a.id]); // not part of the order either
+
+    const connected = repo.markConnected(adding.id, identity("p1"), "cred:p1");
+    expect(connected.setupPending).toBe(false);
+    expect(repo.list().map((x) => x.id)).toEqual([a.id, adding.id]);
+  });
+
+  it("discards only accounts still being added, and one new setup replaces an abandoned one", () => {
+    const a = repo.create({ platform: "instagram", displayName: "A" });
+    expect(() => repo.discardSetup(a.id)).toThrow(/still being added/);
+
+    const abandoned = repo.startSetup("instagram");
+    const next = repo.startSetup("pinterest");
+    expect(() => repo.get(abandoned.id)).toThrow(/not found/);
+    repo.discardSetup(next.id);
+    expect(() => repo.get(next.id)).toThrow(/not found/);
+    expect(repo.list().map((x) => x.id)).toEqual([a.id]);
+  });
+
   it("archives and restores without deleting, and requires schedule review after restore", () => {
     const a = repo.create({ platform: "instagram", displayName: "A" });
     const b = repo.create({ platform: "instagram", displayName: "B" });
@@ -173,7 +197,7 @@ describe("accounts API", () => {
     await t.cleanup();
   });
 
-  const call = (method: "GET" | "POST" | "PATCH", url: string, payload?: unknown) =>
+  const call = (method: "GET" | "POST" | "PATCH" | "DELETE", url: string, payload?: unknown) =>
     t.app.inject({
       method,
       url,
@@ -205,6 +229,23 @@ describe("accounts API", () => {
 
     const restored = await call("POST", `/api/accounts/${pin.id}/restore`, { revision: archived.json().account.revision });
     expect(restored.json().account).toMatchObject({ archived: false, schedulesNeedReview: true });
+  });
+
+  it("adds an account in setup: hidden, unable to hold posts, and discardable only until connected", async () => {
+    const res = await call("POST", "/api/accounts/setup", { platform: "pinterest" });
+    expect(res.statusCode).toBe(201);
+    const adding = res.json().account;
+    expect(adding).toMatchObject({ platform: "pinterest", connection: { state: "unconnected" } });
+    expect((await call("GET", "/api/accounts?includeArchived=true")).json().accounts).toEqual([]);
+    const post = await call("POST", `/api/accounts/${adding.id}/posts`, { mediaAssetId: crypto.randomUUID() });
+    expect(post.json()).toMatchObject({ error: "invalid_state", message: "Connect this account before adding posts to it." });
+
+    expect((await call("DELETE", `/api/accounts/${adding.id}/setup`)).statusCode).toBe(204);
+    expect((await call("GET", `/api/accounts/${adding.id}`)).statusCode).toBe(404);
+
+    const tab = (await call("POST", "/api/accounts", { platform: "instagram", displayName: "IG" })).json().account;
+    expect((await call("DELETE", `/api/accounts/${tab.id}/setup`)).statusCode).toBe(409);
+    expect((await call("POST", "/api/accounts/setup", { platform: "tiktok" })).statusCode).toBe(400);
   });
 
   it("validates input", async () => {

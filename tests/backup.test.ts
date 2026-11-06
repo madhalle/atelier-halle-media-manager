@@ -30,7 +30,7 @@ describe("creating backups", () => {
     const m = await createBackup(env.db, paths, { reason: "manual", ...v, now: at(0) });
 
     expect(m.id).toBe("20261030-120000-000-manual");
-    expect(m.schemaVersion).toBe(4);
+    expect(m.schemaVersion).toBe(5);
     expect(m.mediaFiles).toHaveLength(2); // original + thumbnail
     const dir = join(paths.backups, m.id);
     for (const rel of m.mediaFiles) {

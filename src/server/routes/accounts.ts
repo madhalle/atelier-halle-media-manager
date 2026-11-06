@@ -68,6 +68,7 @@ const IdParams = z.object({ id: z.uuid() });
 const ListQuery = z.object({ includeArchived: z.enum(["true", "false"]).default("false") });
 const CreateBody = z.object({ platform: z.enum(PLATFORMS), displayName: z.string().max(500) }).strict();
 const RenameBody = z.object({ displayName: z.string().max(500), revision: z.number().int().positive() }).strict();
+const SetupBody = z.object({ platform: z.enum(PLATFORMS) }).strict();
 const RevisionBody = z.object({ revision: z.number().int().positive() }).strict();
 const ReorderBody = z.object({ ids: z.array(z.uuid()).max(500) }).strict();
 
@@ -80,6 +81,18 @@ export function registerAccountRoutes(api: FastifyInstance, accounts: AccountsRe
   api.post("/accounts", async (req, reply) => {
     const body = CreateBody.parse(req.body);
     return reply.code(201).send({ account: toAccountView(accounts.create(body)) });
+  });
+
+  // "Add account": the account stays hidden until it connects, and is discarded if abandoned.
+  api.post("/accounts/setup", async (req, reply) => {
+    const { platform } = SetupBody.parse(req.body);
+    return reply.code(201).send({ account: toAccountView(accounts.startSetup(platform)) });
+  });
+
+  api.delete("/accounts/:id/setup", async (req, reply) => {
+    const { id } = IdParams.parse(req.params);
+    accounts.discardSetup(id);
+    return reply.code(204).send();
   });
 
   api.get("/accounts/:id", async (req) => {

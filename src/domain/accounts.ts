@@ -32,6 +32,8 @@ export interface Account {
   identity: VerifiedIdentity | null;
   credentialRef: string | null;
   schedulesNeedReview: boolean;
+  /** Being added: hidden from the account list until its first connection. */
+  setupPending: boolean;
   revision: number;
   createdAt: string;
   updatedAt: string;
