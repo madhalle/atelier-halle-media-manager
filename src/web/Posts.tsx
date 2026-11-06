@@ -114,7 +114,7 @@ export function PostsSection({ account, accounts, openPostId, onOpenPost, onNoti
           onClose={() => setCopying(null)}
           onCopied={(copies) => {
             setCopying(null);
-            const names = copies.map((c) => accounts.find((a) => a.id === c.accountId)?.displayName ?? "account");
+            const names = copies.map((c) => accounts.find((a) => a.id === c.accountId)?.label ?? "account");
             onNotice(`Created ${copies.length} independent draft${copies.length === 1 ? "" : "s"} on: ${names.join(", ")}. Nothing was scheduled.`);
           }}
         />

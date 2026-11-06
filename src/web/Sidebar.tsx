@@ -6,7 +6,6 @@ import { PlatformIcon } from "./icons.tsx";
 
 export interface AccountActions {
   select: (a: Account) => void;
-  rename: (a: Account) => void;
   move: (a: Account, delta: -1 | 1) => void;
   archive: (a: Account) => void;
   restore: (a: Account) => void;
@@ -95,7 +94,6 @@ function AccountRow({
   isLast: boolean;
   actions: AccountActions;
 }) {
-  const handle = a.connection.identity?.username;
   return (
     <li className={`account-row${selected ? " selected" : ""}`} data-account-id={a.id}>
       <button
@@ -106,10 +104,9 @@ function AccountRow({
       >
         <PlatformIcon platform={a.platform} />
         <span className="account-text">
-          <span className="account-name">{a.displayName}</span>
+          <span className="account-name">{a.label}</span>
           <span className="account-meta">
             {PLATFORM_LABEL[a.platform]} · <span className={`conn conn-${a.connection.state}`}>{CONNECTION_LABEL[a.connection.state]}</span>
-            {handle ? ` · @${handle}` : ""}
           </span>
         </span>
       </button>
@@ -132,7 +129,6 @@ function AccountMenu({ account: a, isFirst, isLast, actions }: { account: Accoun
   const items: MenuItem[] = a.archived
     ? [{ label: "Restore", run: () => actions.restore(a) }]
     : [
-        { label: "Rename…", run: () => actions.rename(a) },
         { label: "Move up", run: () => actions.move(a, -1), disabled: isFirst },
         { label: "Move down", run: () => actions.move(a, 1), disabled: isLast },
         { label: "Archive…", run: () => actions.archive(a) },
@@ -178,7 +174,7 @@ function AccountMenu({ account: a, isFirst, isLast, actions }: { account: Accoun
         className="icon-button"
         aria-haspopup="menu"
         aria-expanded={open}
-        aria-label={`Settings for ${a.displayName}`}
+        aria-label={`Settings for ${a.label}`}
         onClick={() => setOpen((v) => !v)}
         onKeyDown={(e) => {
           if (e.key === "ArrowDown") {
@@ -191,7 +187,7 @@ function AccountMenu({ account: a, isFirst, isLast, actions }: { account: Accoun
         ⋯
       </button>
       {open && (
-        <ul className="menu" role="menu" ref={menuRef} aria-label={`${a.displayName} settings`} onKeyDown={onMenuKeyDown}>
+        <ul className="menu" role="menu" ref={menuRef} aria-label={`${a.label} settings`} onKeyDown={onMenuKeyDown}>
           {items.map((item) => (
             <li key={item.label} role="none">
               <button

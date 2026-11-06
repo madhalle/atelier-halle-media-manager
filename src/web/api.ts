@@ -34,6 +34,8 @@ export interface Account {
   id: string;
   platform: Platform;
   displayName: string;
+  /** The platform @handle, or the name of an account that never connected. Use this to show an account. */
+  label: string;
   sortOrder: number;
   archived: boolean;
   archivedAt: string | null;
@@ -69,8 +71,6 @@ export const listAccounts = () =>
 export const startAccountSetup = (platform: Platform) =>
   request<{ account: Account }>("POST", "/api/accounts/setup", { platform }).then((r) => r.account);
 export const discardAccountSetup = (accountId: string) => request<unknown>("DELETE", `/api/accounts/${accountId}/setup`);
-export const renameAccount = (a: Account, displayName: string) =>
-  request<{ account: Account }>("PATCH", `/api/accounts/${a.id}`, { displayName, revision: a.revision }).then((r) => r.account);
 export const reorderAccounts = (ids: string[]) =>
   request<{ accounts: Account[] }>("POST", "/api/accounts/reorder", { ids }).then((r) => r.accounts);
 export const archiveAccount = (a: Account) =>

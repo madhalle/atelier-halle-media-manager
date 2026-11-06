@@ -93,8 +93,7 @@ test("keyboard: arrow keys move between accounts and the settings menu reorders"
   await menuButton.focus();
   await page.keyboard.press("Enter");
   const menu = page.getByRole("menu", { name: "One settings" });
-  await expect(menu.getByRole("menuitem", { name: "Rename…" })).toBeFocused();
-  await page.keyboard.press("ArrowDown"); // Move up is disabled for the first item → skips to Move down
+  // Move up is disabled for the first item, so focus starts on Move down.
   await expect(menu.getByRole("menuitem", { name: "Move down" })).toBeFocused();
   await page.keyboard.press("Enter");
   await expect(sidebar(page).locator(".account-name")).toHaveText(["Two", "One", "Three"]);
@@ -105,50 +104,6 @@ test("keyboard: arrow keys move between accounts and the settings menu reorders"
   await page.keyboard.press("Escape");
   await expect(menu).toBeHidden();
   await expect(menuButton).toBeFocused();
-});
-
-test("switching accounts never silently discards an unsaved rename", async ({ page, server }) => {
-  await server.signIn(page);
-  await createAccountsViaApi(page, [
-    { platform: "instagram", displayName: "Alpha" },
-    { platform: "pinterest", displayName: "Beta" },
-  ]);
-  await page.reload();
-  await expect(page.getByRole("heading", { level: 1, name: "Alpha" })).toBeVisible();
-
-  const nameField = page.locator("main").getByLabel("Display name");
-  await nameField.fill("Alpha edited");
-  await tab(page, "Beta").click();
-
-  const dialog = page.getByRole("dialog", { name: "Discard unsaved changes?" });
-  await expect(dialog).toBeVisible();
-  await dialog.getByRole("button", { name: "Keep editing" }).click();
-  await expect(page.getByRole("heading", { level: 1, name: "Alpha" })).toBeVisible();
-  await expect(nameField).toHaveValue("Alpha edited");
-
-  await tab(page, "Beta").click();
-  await dialog.getByRole("button", { name: "Discard changes" }).click();
-  await expect(page.getByRole("heading", { level: 1, name: "Beta" })).toBeVisible();
-
-  await tab(page, "Alpha").click();
-  await expect(page.locator("main").getByLabel("Display name")).toHaveValue("Alpha");
-});
-
-test("rename from the settings menu saves", async ({ page, server }) => {
-  await server.signIn(page);
-  await createAccountsViaApi(page, [
-    { platform: "instagram", displayName: "Alpha" },
-    { platform: "pinterest", displayName: "Beta" },
-  ]);
-  await page.reload();
-  await page.getByRole("button", { name: "Settings for Beta" }).click();
-  await page.getByRole("menuitem", { name: "Rename…" }).click();
-  const field = page.locator("main").getByLabel("Display name");
-  await expect(field).toBeFocused();
-  await field.fill("Personal Pinterest");
-  await page.getByRole("button", { name: "Save name" }).click();
-  await expect(page.getByRole("heading", { level: 1, name: "Personal Pinterest" })).toBeVisible();
-  await expect(tab(page, "Personal Pinterest")).toBeVisible();
 });
 
 test("archive keeps the account restorable and restore requires schedule review", async ({ page, server }) => {

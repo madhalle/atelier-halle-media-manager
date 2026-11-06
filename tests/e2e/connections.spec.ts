@@ -57,7 +57,12 @@ test("Add account: Instagram, saving the Meta token in the dialog, then choosing
 
   await expect(dialog).toBeHidden();
   await expect(page.getByRole("status").filter({ hasText: "Added @studio_second." })).toBeVisible();
-  await expect(page.getByRole("navigation", { name: "Accounts" }).locator(".account-row")).toHaveCount(1);
+  // The tab shows the platform's logo and the account's handle.
+  const row = page.getByRole("navigation", { name: "Accounts" }).locator(".account-row");
+  await expect(row).toHaveCount(1);
+  await expect(row.locator(".account-name")).toHaveText("@studio_second");
+  await expect(row.locator(".platform-icon.instagram")).toBeVisible();
+  await expect(page.getByRole("heading", { level: 1, name: "@studio_second" })).toBeVisible();
   await expect(page.locator("main")).toContainText("Connected as @studio_second (business)");
   await previewSettled(page);
   expect(await page.content()).not.toContain(BUSINESS_TOKEN);
@@ -77,7 +82,10 @@ test("Add account: Pinterest, entering the app details in the dialog, then signi
 
   // Pinterest's sign-in leaves the app and returns to the new, now visible, tab.
   await expect(page.locator("main")).toContainText("Connected as @atelierhalle (business)", { timeout: 15_000 });
-  await expect(page.getByRole("navigation", { name: "Accounts" }).locator(".account-row")).toHaveCount(1);
+  const row = page.getByRole("navigation", { name: "Accounts" }).locator(".account-row");
+  await expect(row).toHaveCount(1);
+  await expect(row.locator(".account-name")).toHaveText("@atelierhalle");
+  await expect(row.locator(".platform-icon.pinterest")).toBeVisible();
   await previewSettled(page);
 });
 

@@ -1,10 +1,10 @@
 // Main panel for the selected account: identity, publishing readiness,
 // posts (gallery or composer), and account settings.
-import { useEffect, useId, useRef, useState, type FormEvent } from "react";
-import { ApiError, CONNECTION_LABEL, disconnectAccount, PLATFORM_LABEL, renameAccount, type Account } from "./api.ts";
+import { useState } from "react";
+import { ApiError, CONNECTION_LABEL, disconnectAccount, PLATFORM_LABEL, type Account } from "./api.ts";
 import { AccountPreview } from "./AccountPreview.tsx";
 import { ConnectAccount } from "./ConnectAccount.tsx";
-import { useDirty, useGuard } from "./dialogs.tsx";
+import { useGuard } from "./dialogs.tsx";
 import { PlatformIcon } from "./icons.tsx";
 import { PostsSection } from "./Posts.tsx";
 
@@ -14,15 +14,13 @@ interface Props {
   openPostId: string | null;
   onOpenPost: (id: string | null) => void;
   onNotice: (text: string) => void;
-  focusRename: boolean;
-  onRenameFocused: () => void;
   onUpdated: (a: Account) => void;
   onArchive: (a: Account) => void;
   onRestore: (a: Account) => void;
   onAcknowledgeReview: (a: Account) => void;
 }
 
-export function AccountPanel({ account: a, accounts, openPostId, onOpenPost, onNotice, focusRename, onRenameFocused, onUpdated, onArchive, onRestore, onAcknowledgeReview }: Props) {
+export function AccountPanel({ account: a, accounts, openPostId, onOpenPost, onNotice, onUpdated, onArchive, onRestore, onAcknowledgeReview }: Props) {
   const identity = a.connection.identity;
   const formatDate = (iso: string) => new Date(iso).toLocaleString(undefined, { dateStyle: "medium", timeStyle: "short" });
 
@@ -31,7 +29,7 @@ export function AccountPanel({ account: a, accounts, openPostId, onOpenPost, onN
       <header className="panel-header">
         <PlatformIcon platform={a.platform} />
         <div>
-          <h1 id="account-title" tabIndex={-1}>{a.displayName}</h1>
+          <h1 id="account-title" tabIndex={-1}>{a.label}</h1>
           <p className="panel-meta">
             {PLATFORM_LABEL[a.platform]} ·{" "}
             <span className={`conn conn-${a.connection.state}`}>{CONNECTION_LABEL[a.connection.state]}</span>
@@ -78,89 +76,16 @@ export function AccountPanel({ account: a, accounts, openPostId, onOpenPost, onN
       <PostsSection account={a} accounts={accounts} openPostId={openPostId} onOpenPost={onOpenPost} onNotice={onNotice} />
 
       {!a.archived && !openPostId && (
-        <AccountSettings account={a} focusRename={focusRename} onRenameFocused={onRenameFocused} onUpdated={onUpdated} onArchive={onArchive} />
+        <AccountSettings account={a} onUpdated={onUpdated} onArchive={onArchive} />
       )}
     </article>
   );
 }
 
-function AccountSettings({
-  account: a,
-  focusRename,
-  onRenameFocused,
-  onUpdated,
-  onArchive,
-}: {
-  account: Account;
-  focusRename: boolean;
-  onRenameFocused: () => void;
-  onUpdated: (a: Account) => void;
-  onArchive: (a: Account) => void;
-}) {
-  const [name, setName] = useState(a.displayName);
-  const [error, setError] = useState<string | null>(null);
-  const [saving, setSaving] = useState(false);
-  const inputRef = useRef<HTMLInputElement>(null);
-  const nameId = useId();
-  const errorId = useId();
-  const dirty = name !== a.displayName;
-  useDirty(`rename:${a.id}`, dirty);
-
-  useEffect(() => setName(a.displayName), [a.id, a.displayName]);
-  useEffect(() => {
-    if (!focusRename) return;
-    inputRef.current?.focus();
-    inputRef.current?.select();
-    inputRef.current?.scrollIntoView({ block: "center" });
-    onRenameFocused();
-  }, [focusRename, onRenameFocused]);
-
-  const save = async (e: FormEvent) => {
-    e.preventDefault();
-    setSaving(true);
-    setError(null);
-    try {
-      onUpdated(await renameAccount(a, name));
-    } catch (err) {
-      setError(err instanceof ApiError ? err.message : "Could not rename the account.");
-    } finally {
-      setSaving(false);
-    }
-  };
-
+function AccountSettings({ account: a, onUpdated, onArchive }: { account: Account; onUpdated: (a: Account) => void; onArchive: (a: Account) => void }) {
   return (
     <section className="settings" aria-labelledby="settings-heading">
       <h2 id="settings-heading">Account settings</h2>
-      <form className="rename" onSubmit={(e) => void save(e)} noValidate>
-        <label htmlFor={nameId}>Display name</label>
-        <div className="inline-field">
-          <input
-            id={nameId}
-            ref={inputRef}
-            type="text"
-            value={name}
-            maxLength={60}
-            autoComplete="off"
-            aria-invalid={error !== null}
-            aria-describedby={error ? errorId : undefined}
-            onChange={(e) => setName(e.target.value)}
-          />
-          <button type="submit" className="primary" disabled={!dirty || saving}>
-            Save name
-          </button>
-          {dirty && (
-            <button type="button" onClick={() => setName(a.displayName)}>
-              Revert
-            </button>
-          )}
-        </div>
-        {error && (
-          <p id={errorId} className="error" role="alert">
-            {error}
-          </p>
-        )}
-      </form>
-
       <div className="setting-row">
         <h3>Connection</h3>
         <ConnectionControls account={a} onUpdated={onUpdated} />
@@ -185,7 +110,7 @@ function ConnectionControls({ account: a, onUpdated }: { account: Account; onUpd
 
   const disconnect = async () => {
     const ok = await confirm({
-      title: `Disconnect ${a.displayName}?`,
+      title: `Disconnect ${a.label}?`,
       body: (
         <>
           <p>Publishing stops and the saved sign-in is deleted from the Keychain. Posts, schedules and history are kept; schedules pause until you reconnect and review them.</p>

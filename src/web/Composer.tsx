@@ -256,7 +256,7 @@ export function Composer({ post, account, defaultTimezone, onNotice, onSaved, on
           ← Back to posts
         </button>
         <h2 id="composer-title" tabIndex={-1}>
-          {STATUS_LABEL[post.status]} for {account.displayName}
+          {STATUS_LABEL[post.status]} for {account.label}
         </h2>
         {post.copiedFromPostId && <p className="hint">Independent copy: edits here never change the original or other copies.</p>}
       </header>

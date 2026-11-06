@@ -146,14 +146,6 @@ export function createAccountsRepo(db: Db, now: () => Date = () => new Date()) {
       })();
     },
 
-    rename(id: string, displayName: string, expectedRevision?: number): Account {
-      const name = normalizeDisplayName(displayName);
-      return mutate(id, (a) => {
-        checkRevision(a, expectedRevision);
-        db.prepare(`UPDATE accounts SET display_name = @name, ${bump} WHERE id = @id`).run({ id, name, now: iso() });
-      });
-    },
-
     /** Removes an account that never finished being added. */
     discardSetup(id: string): void {
       if (!require(id).setupPending) throw new DomainError("invalid_state", "Only an account that is still being added can be discarded.");

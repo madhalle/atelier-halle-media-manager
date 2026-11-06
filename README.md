@@ -81,7 +81,7 @@ bounded, jittered backoff. Details: [docs/scheduling.md](docs/scheduling.md).
 pruned when no longer needed, a disk-space guard, and backups that hard-link
 immutable photos so they take no extra space.
 
-**Tested like it matters.** 231 unit and integration tests and 42 Playwright
+**Tested like it matters.** 230 unit and integration tests and 40 Playwright
 browser tests. Platform APIs are exercised against loopback fakes that verify
 what the app sends (including R2 request signatures), so the suite never touches a
 real account. Security checks were mutation-tested: each was deliberately broken
@@ -130,7 +130,7 @@ to view; see [LICENSE](LICENSE).
 | Migrations | ✅ Works |
 | Data directories | ✅ Works |
 | Built UI served from the same origin | ✅ Works |
-| Accounts: create on either platform, rename, reorder, archive, restore | ✅ Works |
+| Accounts: add by connecting (tab shows the @handle), reorder, archive, restore | ✅ Works |
 | Vertical account sidebar, per-account main panel, narrow-screen drawer | ✅ Works |
 | Identity uniqueness and schedule-review rules | ✅ Works (enforced in the database; exercised by tests only, since connecting needs platform sign-in) |
 | Photo library: multi-file upload, dedupe, thumbnails, safe deletion | ✅ Works |

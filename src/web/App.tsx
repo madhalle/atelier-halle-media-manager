@@ -79,7 +79,6 @@ function Shell({ status, initialAccounts }: { status: Status; initialAccounts: A
   const [openPostId, setOpenPostId] = useState<string | null>(route.postId);
   const [addOpen, setAddOpen] = useState(false);
   const [drawerOpen, setDrawerOpen] = useState(false);
-  const [renameTarget, setRenameTarget] = useState<string | null>(null);
   const [notice, setNotice] = useState<{ text: string; tone: "info" | "error" } | null>(null);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [platformsOpen, setPlatformsOpen] = useState(false);
@@ -148,10 +147,6 @@ function Shell({ status, initialAccounts }: { status: Status; initialAccounts: A
 
   const actions: AccountActions = {
     select: (a) => void select(a),
-    rename: (a) =>
-      void select(a).then((ok) => {
-        if (ok) setRenameTarget(a.id);
-      }),
     move: (a, delta) => {
       const active = accounts.filter((x) => !x.archived);
       const i = active.findIndex((x) => x.id === a.id);
@@ -166,7 +161,7 @@ function Shell({ status, initialAccounts }: { status: Status; initialAccounts: A
     archive: (a) =>
       void (async () => {
         const ok = await confirm({
-          title: `Archive “${a.displayName}”?`,
+          title: `Archive “${a.label}”?`,
           body: (
             <>
               <p>The tab is hidden and any pending publication is paused. Posts, photos and history are kept, and you can restore it later.</p>
@@ -186,7 +181,7 @@ function Shell({ status, initialAccounts }: { status: Status; initialAccounts: A
             setOpenPostId(null);
             setSelectedId(nextList.find((x) => !x.archived)?.id ?? null);
           }
-          setNotice({ text: `Archived “${a.displayName}”.`, tone: "info" });
+          setNotice({ text: `Archived “${a.label}”.`, tone: "info" });
         } catch (err) {
           await fail(err);
         }
@@ -197,7 +192,7 @@ function Shell({ status, initialAccounts }: { status: Status; initialAccounts: A
           await reload();
           setOpenPostId(null);
           setSelectedId(restored.id);
-          setNotice({ text: `Restored “${restored.displayName}”. Any pending schedules stay paused until you review them.`, tone: "info" });
+          setNotice({ text: `Restored “${restored.label}”. Any pending schedules stay paused until you review them.`, tone: "info" });
         })
         .catch(fail),
   };
@@ -210,7 +205,7 @@ function Shell({ status, initialAccounts }: { status: Status; initialAccounts: A
         <button type="button" aria-expanded={drawerOpen} aria-controls="sidebar" onClick={() => setDrawerOpen((v) => !v)}>
           ☰ Accounts
         </button>
-        <span className="mobile-current">{selected?.displayName ?? "No account selected"}</span>
+        <span className="mobile-current">{selected?.label ?? "No account selected"}</span>
       </header>
 
       <aside id="sidebar" aria-label="Accounts sidebar">
@@ -237,8 +232,6 @@ function Shell({ status, initialAccounts }: { status: Status; initialAccounts: A
             openPostId={openPostId}
             onOpenPost={setOpenPostId}
             onNotice={(text) => setNotice({ text, tone: "info" })}
-            focusRename={renameTarget === selected.id}
-            onRenameFocused={() => setRenameTarget(null)}
             onUpdated={upsert}
             onArchive={actions.archive}
             onRestore={actions.restore}
@@ -284,7 +277,7 @@ function Shell({ status, initialAccounts }: { status: Status; initialAccounts: A
           setAddOpen(false);
           setAccounts((list) => [...list.filter((x) => !x.archived), a, ...list.filter((x) => x.archived)]);
           void select(a).then((ok) => {
-            if (ok) setNotice({ text: `Added ${a.connection.identity?.username ? `@${a.connection.identity.username}` : a.displayName}.`, tone: "info" });
+            if (ok) setNotice({ text: `Added ${a.label}.`, tone: "info" });
           });
         }}
       />

@@ -2,13 +2,15 @@
 // then accounts are created unconnected and can never publish.
 import type { FastifyInstance } from "fastify";
 import { z } from "zod";
-import { canPublish, PLATFORMS, type Account } from "../../domain/accounts.ts";
+import { accountLabel, canPublish, PLATFORMS, type Account } from "../../domain/accounts.ts";
 import type { AccountsRepo } from "../../storage/accounts-repo.ts";
 
 export interface AccountView {
   id: string;
   platform: Account["platform"];
   displayName: string;
+  /** The platform @handle, or the name of an account that never connected. */
+  label: string;
   sortOrder: number;
   archived: boolean;
   archivedAt: string | null;
@@ -44,6 +46,7 @@ export function toAccountView(a: Account): AccountView {
     id: a.id,
     platform: a.platform,
     displayName: a.displayName,
+    label: accountLabel(a),
     sortOrder: a.sortOrder,
     archived: a.archivedAt !== null,
     archivedAt: a.archivedAt,
@@ -67,7 +70,6 @@ export function toAccountView(a: Account): AccountView {
 const IdParams = z.object({ id: z.uuid() });
 const ListQuery = z.object({ includeArchived: z.enum(["true", "false"]).default("false") });
 const CreateBody = z.object({ platform: z.enum(PLATFORMS), displayName: z.string().max(500) }).strict();
-const RenameBody = z.object({ displayName: z.string().max(500), revision: z.number().int().positive() }).strict();
 const SetupBody = z.object({ platform: z.enum(PLATFORMS) }).strict();
 const RevisionBody = z.object({ revision: z.number().int().positive() }).strict();
 const ReorderBody = z.object({ ids: z.array(z.uuid()).max(500) }).strict();
@@ -98,12 +100,6 @@ export function registerAccountRoutes(api: FastifyInstance, accounts: AccountsRe
   api.get("/accounts/:id", async (req) => {
     const { id } = IdParams.parse(req.params);
     return { account: toAccountView(accounts.get(id)) };
-  });
-
-  api.patch("/accounts/:id", async (req) => {
-    const { id } = IdParams.parse(req.params);
-    const body = RenameBody.parse(req.body);
-    return { account: toAccountView(accounts.rename(id, body.displayName, body.revision)) };
   });
 
   api.post("/accounts/reorder", async (req) => {

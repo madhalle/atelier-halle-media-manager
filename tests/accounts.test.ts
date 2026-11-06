@@ -1,6 +1,6 @@
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { canPublish, normalizeDisplayName, type VerifiedIdentity } from "../src/domain/accounts.ts";
+import { accountLabel, canPublish, normalizeDisplayName, type VerifiedIdentity } from "../src/domain/accounts.ts";
 import { createAccountsRepo, type AccountsRepo } from "../src/storage/accounts-repo.ts";
 import { openDatabase, type Db } from "../src/storage/db.ts";
 import { migrate } from "../src/storage/migrate.ts";
@@ -76,14 +76,6 @@ describe("accounts repository", () => {
     expect(() => repo.reorder([a.id, b.id, crypto.randomUUID()])).toThrow();
   });
 
-  it("renames with revision checks", () => {
-    const a = repo.create({ platform: "instagram", displayName: "A" });
-    const renamed = repo.rename(a.id, "Business Instagram", a.revision);
-    expect(renamed.displayName).toBe("Business Instagram");
-    expect(renamed.revision).toBe(a.revision + 1);
-    expect(() => repo.rename(a.id, "Stale", a.revision)).toThrow(/changed in another window/);
-  });
-
   it("keeps an account being added out of the list until it connects", () => {
     const a = repo.create({ platform: "instagram", displayName: "A" });
     const adding = repo.startSetup("pinterest");
@@ -93,6 +85,7 @@ describe("accounts repository", () => {
 
     const connected = repo.markConnected(adding.id, identity("p1"), "cred:p1");
     expect(connected.setupPending).toBe(false);
+    expect(accountLabel(connected)).toBe("@user_p1"); // named by its handle, not the placeholder name
     expect(repo.list().map((x) => x.id)).toEqual([a.id, adding.id]);
   });
 
@@ -129,7 +122,7 @@ describe("accounts repository", () => {
     const b = repo.create({ platform: "instagram", displayName: "Same Name" });
     const p = repo.create({ platform: "pinterest", displayName: "Pins" });
     repo.markConnected(a.id, identity("111"), "kc:a");
-    expect(() => repo.markConnected(b.id, identity("111", "renamed_handle"), "kc:b")).toThrow(/already connected to “Same Name”/);
+    expect(() => repo.markConnected(b.id, identity("111", "renamed_handle"), "kc:b")).toThrow(/already added as @user_111/);
     // Different provider ID with the same handle is a different identity.
     expect(repo.markConnected(b.id, identity("222", "user_111"), "kc:b").connectionState).toBe("connected");
     // Same numeric ID on another platform is a different identity.
@@ -205,7 +198,7 @@ describe("accounts API", () => {
       ...(payload !== undefined ? { payload: payload as object } : {}),
     });
 
-  it("creates, lists, renames, reorders, archives and restores", async () => {
+  it("creates, lists, reorders, archives and restores", async () => {
     expect((await call("GET", "/api/accounts")).json()).toEqual({ accounts: [] });
 
     const ig = (await call("POST", "/api/accounts", { platform: "instagram", displayName: "Business Instagram" })).json().account;
@@ -213,11 +206,7 @@ describe("accounts API", () => {
     expect(ig).toMatchObject({ platform: "instagram", archived: false, connection: { state: "unconnected", identity: null } });
     expect(ig.publishing).toEqual({ ready: false, blockers: ["Not connected to a platform account yet."] });
     expect(ig).not.toHaveProperty("credentialRef");
-
-    const renamed = await call("PATCH", `/api/accounts/${ig.id}`, { displayName: "Personal Instagram", revision: ig.revision });
-    expect(renamed.json().account.displayName).toBe("Personal Instagram");
-    const stale = await call("PATCH", `/api/accounts/${ig.id}`, { displayName: "Nope", revision: ig.revision });
-    expect(stale.statusCode).toBe(409);
+    expect(ig.label).toBe("Business Instagram"); // no handle until it connects
 
     const reordered = await call("POST", "/api/accounts/reorder", { ids: [pin.id, ig.id] });
     expect(reordered.json().accounts.map((a: { id: string }) => a.id)).toEqual([pin.id, ig.id]);
@@ -266,12 +255,8 @@ describe("accounts API", () => {
     const start = await call("POST", `/api/accounts/${ig.id}/connect`, { providerAccountId: "1" });
     expect(start.statusCode).toBe(409);
     expect((await call("GET", `/api/accounts/${ig.id}`)).json().account.connection.state).toBe("unconnected");
-    const patched = await call("PATCH", `/api/accounts/${ig.id}`, {
-      displayName: "IG",
-      revision: ig.revision,
-      connectionState: "connected",
-    });
-    expect(patched.statusCode).toBe(400);
+    const patched = await call("PATCH", `/api/accounts/${ig.id}`, { revision: ig.revision, connectionState: "connected" });
+    expect(patched.statusCode).toBe(404);
   });
 
   it("returns caption-safe JSON for names containing markup", async () => {

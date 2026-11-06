@@ -76,7 +76,7 @@ function CopyForm({ post, source, accounts, onClose, onCopied }: Props & { post:
                 <input type="checkbox" checked={chosen.has(a.id)} onChange={() => toggle(a.id)} />
                 <PlatformIcon platform={a.platform} />
                 <span>
-                  {a.displayName}{" "}
+                  {a.label}{" "}
                   <span className="hint">
                     ({PLATFORM_LABEL[a.platform]} · {CONNECTION_LABEL[a.connection.state]})
                   </span>

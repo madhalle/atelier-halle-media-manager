@@ -53,6 +53,11 @@ export function normalizeDisplayName(raw: string): string {
   return name;
 }
 
+/** How an account is named in the app: its platform @handle, or its name if it never connected. */
+export function accountLabel(a: Pick<Account, "displayName" | "identity">): string {
+  return a.identity?.username ? `@${a.identity.username}` : a.displayName;
+}
+
 export function isActive(a: Account): boolean {
   return a.archivedAt === null;
 }
@@ -94,7 +99,7 @@ export function assertCanConnect(account: Account, identity: VerifiedIdentity, o
   if (ownerOfIdentity && ownerOfIdentity.id !== account.id) {
     throw new DomainError(
       "duplicate_identity",
-      `That ${PLATFORM_LABELS[account.platform]} account is already connected to “${ownerOfIdentity.displayName}”.`,
+      `That ${PLATFORM_LABELS[account.platform]} account is already added as ${accountLabel(ownerOfIdentity)}.`,
     );
   }
 }
