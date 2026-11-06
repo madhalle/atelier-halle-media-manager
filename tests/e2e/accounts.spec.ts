@@ -38,12 +38,12 @@ test("creates accounts on both platforms in a vertical sidebar and switches gall
   expect(boxes[0]!.y).toBeLessThan(boxes[1]!.y);
   expect(boxes[1]!.y).toBeLessThan(boxes[2]!.y);
 
-  // Sidebar ≈ 1/3, main ≈ 2/3.
+  // Sidebar ≈ 1/6 of the page, main ≈ 5/6.
   const aside = (await page.locator("aside#sidebar").boundingBox())!;
   const main = (await page.locator("main#main").boundingBox())!;
   expect(main.x).toBeGreaterThanOrEqual(aside.x + aside.width - 1);
-  expect(main.width / aside.width).toBeGreaterThan(1.7);
-  expect(main.width / aside.width).toBeLessThan(2.3);
+  expect(main.width / aside.width).toBeGreaterThan(4.5);
+  expect(main.width / aside.width).toBeLessThan(5.5);
 
   await tab(page, "Personal Instagram").click();
   await expect(page.getByRole("heading", { level: 1, name: "Personal Instagram" })).toBeVisible();

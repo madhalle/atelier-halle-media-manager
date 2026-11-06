@@ -53,7 +53,7 @@ input[aria-invalid="true"] { border-color: var(--danger); }
 /* Two-column shell: sidebar ≈ 1/3, main ≈ 2/3. */
 .app {
   display: grid;
-  grid-template-columns: minmax(15rem, 1fr) minmax(0, 2fr);
+  grid-template-columns: minmax(11rem, 1fr) minmax(0, 5fr);
   height: 100vh;
 }
 .mobile-bar { display: none; }
