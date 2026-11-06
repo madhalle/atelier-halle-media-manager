@@ -1,20 +1,9 @@
 // Main panel for the selected account: identity, publishing readiness,
 // posts (gallery or composer), and account settings.
 import { useEffect, useId, useRef, useState, type FormEvent } from "react";
-import {
-  ApiError,
-  CONNECTION_LABEL,
-  connectBusinessInstagram,
-  disconnectAccount,
-  getPlatformSetup,
-  listBusinessInstagramAccounts,
-  PLATFORM_LABEL,
-  renameAccount,
-  startConnect,
-  type Account,
-  type BusinessInstagramAccount,
-} from "./api.ts";
+import { ApiError, CONNECTION_LABEL, disconnectAccount, PLATFORM_LABEL, renameAccount, type Account } from "./api.ts";
 import { AccountPreview } from "./AccountPreview.tsx";
+import { ConnectAccount } from "./ConnectAccount.tsx";
 import { useDirty, useGuard } from "./dialogs.tsx";
 import { PlatformIcon } from "./icons.tsx";
 import { PostsSection } from "./Posts.tsx";
@@ -189,74 +178,10 @@ function AccountSettings({
 }
 
 function ConnectionControls({ account: a, onUpdated }: { account: Account; onUpdated: (a: Account) => void }) {
-  const { confirm, confirmDiscard } = useGuard();
-  const [configured, setConfigured] = useState<boolean | null>(null);
-  // Instagram via a business portfolio token: pick an account instead of signing in.
-  const [business, setBusiness] = useState(false);
-  const [choices, setChoices] = useState<BusinessInstagramAccount[] | null>(null);
-  const [chosen, setChosen] = useState("");
+  const { confirm } = useGuard();
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState<{ tone: "info" | "error"; text: string } | null>(null);
-  const label = PLATFORM_LABEL[a.platform];
   const identity = a.connection.identity;
-  const connected = a.connection.state === "connected";
-
-  useEffect(() => {
-    getPlatformSetup()
-      .then((s) => {
-        const ig = s.config.instagram;
-        const viaToken = a.platform === "instagram" && ig.businessTokenSaved;
-        setBusiness(viaToken);
-        setConfigured(viaToken || (a.platform === "instagram" ? ig.secretSaved && !!ig.clientId : s.config.pinterest.secretSaved && !!s.config.pinterest.clientId));
-      })
-      .catch(() => setConfigured(false));
-  }, [a.platform]);
-
-  const loadChoices = async () => {
-    setBusy(true);
-    setMessage(null);
-    try {
-      const r = await listBusinessInstagramAccounts(a.id);
-      if (r.missing.length > 0) {
-        setMessage({ tone: "error", text: `The token is missing ${r.missing.join(" and ")}. Add it in Meta, generate a new token, and save it in Platform setup.` });
-      } else {
-        // Meta's list can be empty even when the token can reach the account; then ask for the ID.
-        setChoices(r.accounts);
-        setChosen(r.accounts.find((c) => c.username !== null && c.username === identity?.username)?.id ?? r.accounts[0]?.id ?? "");
-      }
-    } catch (err) {
-      setMessage({ tone: "error", text: err instanceof ApiError ? err.message : "Couldn't load the Instagram accounts." });
-    } finally {
-      setBusy(false);
-    }
-  };
-
-  const connectChosen = async () => {
-    setBusy(true);
-    setMessage(null);
-    try {
-      onUpdated(await connectBusinessInstagram(a.id, chosen));
-      setChoices(null);
-    } catch (err) {
-      setMessage({ tone: "error", text: err instanceof ApiError ? err.message : "Couldn't connect." });
-    } finally {
-      setBusy(false);
-    }
-  };
-
-  const connect = async () => {
-    if (business) return loadChoices();
-    if (!(await confirmDiscard())) return;
-    setBusy(true);
-    setMessage(null);
-    try {
-      // Same tab: the platform redirects back to this app to finish.
-      window.location.assign(await startConnect(a.id));
-    } catch (err) {
-      setMessage({ tone: "error", text: err instanceof ApiError ? err.message : "Couldn't start connecting." });
-      setBusy(false);
-    }
-  };
 
   const disconnect = async () => {
     const ok = await confirm({
@@ -289,71 +214,17 @@ function ConnectionControls({ account: a, onUpdated }: { account: Account; onUpd
   return (
     <>
       <p>
-        {a.connection.state === "unconnected"
-          ? business
-            ? `Not connected. Connecting uses your Meta business portfolio token: choose which Instagram account this tab posts to.`
-            : `Not connected. Connecting signs in to ${label}, verifies the real account and checks it can publish.`
-          : `${CONNECTION_LABEL[a.connection.state]}${identity?.username ? ` as @${identity.username}` : ""}${identity?.accountType ? ` (${identity.accountType.toLowerCase()})` : ""}.`}
+        {CONNECTION_LABEL[a.connection.state]}
+        {identity?.username ? ` as @${identity.username}` : ""}
+        {identity?.accountType ? ` (${identity.accountType.toLowerCase()})` : ""}.
       </p>
-      {choices && choices.length === 0 && !connected && (
-        <div className="field">
-          <label htmlFor={`choose-${a.id}`} className="field-label">
-            Instagram account ID
-          </label>
-          <input
-            id={`choose-${a.id}`}
-            type="text"
-            inputMode="numeric"
-            autoComplete="off"
-            spellCheck={false}
-            value={chosen}
-            onChange={(e) => setChosen(e.target.value.trim())}
-          />
-          <p className="hint">
-            Meta didn’t list the accounts this token can use. Copy the ID from Meta Business settings › Accounts › Instagram accounts (the number
-            under the username). The app checks with Meta that the token can reach it before connecting.
-          </p>
-        </div>
-      )}
-      {choices && choices.length > 0 && !connected && (
-        <div className="field">
-          <label htmlFor={`choose-${a.id}`} className="field-label">
-            Instagram account
-          </label>
-          <select id={`choose-${a.id}`} value={chosen} onChange={(e) => setChosen(e.target.value)}>
-            {choices.map((c) => (
-              <option key={c.id} value={c.id}>
-                {c.username ? `@${c.username}` : c.id}
-                {c.name ? ` (${c.name})` : ""}
-              </option>
-            ))}
-          </select>
-        </div>
-      )}
-      <div className="setup-actions">
-        {choices && !connected && (
-          <>
-            <button type="button" className="primary" disabled={busy || !/^\d{1,30}$/.test(chosen)} onClick={() => void connectChosen()}>
-              Connect this account
-            </button>
-            <button type="button" disabled={busy} onClick={() => setChoices(null)}>
-              Cancel
-            </button>
-          </>
-        )}
-        {!connected && !choices && (
-          <button type="button" className="primary" disabled={busy || configured !== true} onClick={() => void connect()}>
-            {a.connection.state === "unconnected" ? `Connect ${label} account` : `Reconnect ${label}`}
-          </button>
-        )}
-        {a.connection.state !== "unconnected" && (
+      {a.connection.state !== "connected" && <ConnectAccount account={a} onConnected={onUpdated} />}
+      {a.connection.state !== "unconnected" && (
+        <div className="setup-actions">
           <button type="button" className="danger" disabled={busy} onClick={() => void disconnect()}>
             Disconnect…
           </button>
-        )}
-      </div>
-      {configured === false && !connected && (
-        <p className="hint">Set up the {label} developer app first: Settings › Platform setup.</p>
+        </div>
       )}
       {message && (
         <p className={message.tone === "error" ? "error" : "hint"} role={message.tone === "error" ? "alert" : "status"}>

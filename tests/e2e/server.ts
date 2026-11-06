@@ -141,12 +141,3 @@ export async function createAccountsViaApi(page: Page, accounts: { platform: "in
     return ids;
   }, accounts);
 }
-
-export async function addAccountViaUi(page: Page, platform: "Instagram" | "Pinterest", name: string) {
-  await page.getByRole("button", { name: "+ Add account" }).first().click();
-  const dialog = page.getByRole("dialog", { name: "Add account" });
-  await dialog.getByRole("radio", { name: platform }).check();
-  await dialog.getByLabel("Display name").fill(name);
-  await dialog.getByRole("button", { name: "Create account" }).click();
-  await expect(dialog).toBeHidden();
-}

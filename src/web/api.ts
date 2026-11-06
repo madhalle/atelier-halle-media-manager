@@ -65,8 +65,10 @@ export const logout = () => request<{ ok: true }>("POST", "/api/session/logout",
 
 export const listAccounts = () =>
   request<{ accounts: Account[] }>("GET", "/api/accounts?includeArchived=true").then((r) => r.accounts);
-export const createAccount = (platform: Platform, displayName: string) =>
-  request<{ account: Account }>("POST", "/api/accounts", { platform, displayName }).then((r) => r.account);
+/** Starts "Add account": the account stays hidden until it connects. */
+export const startAccountSetup = (platform: Platform) =>
+  request<{ account: Account }>("POST", "/api/accounts/setup", { platform }).then((r) => r.account);
+export const discardAccountSetup = (accountId: string) => request<unknown>("DELETE", `/api/accounts/${accountId}/setup`);
 export const renameAccount = (a: Account, displayName: string) =>
   request<{ account: Account }>("PATCH", `/api/accounts/${a.id}`, { displayName, revision: a.revision }).then((r) => r.account);
 export const reorderAccounts = (ids: string[]) =>
@@ -348,6 +350,15 @@ export const clearPlatformSetup = (kind: "instagram" | "pinterest" | "r2") =>
 
 /** Uploads, reads back and deletes a tiny test object in the R2 bucket. */
 export const testR2 = () => request<{ ok: true }>("POST", "/api/platforms/r2/test", {});
+
+/** Instagram accounts connect through the saved Meta business portfolio token rather than a sign-in. */
+export const connectsViaBusinessToken = (c: PlatformSetup["config"], platform: Platform) => platform === "instagram" && c.instagram.businessTokenSaved;
+
+/** Whether what's needed to connect accounts on `platform` (developer app or Meta token) is saved. */
+export function platformReady(c: PlatformSetup["config"], platform: Platform): boolean {
+  if (platform === "pinterest") return c.pinterest.secretSaved && !!c.pinterest.clientId;
+  return c.instagram.businessTokenSaved || (c.instagram.secretSaved && !!c.instagram.clientId);
+}
 
 export const startConnect = (accountId: string) =>
   request<{ authorizeUrl: string }>("POST", `/api/accounts/${accountId}/connect`, {}).then((r) => r.authorizeUrl);

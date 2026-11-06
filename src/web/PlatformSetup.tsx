@@ -39,20 +39,7 @@ function SetupBody({ onClose, onChanged }: { onClose: () => void; onChanged: () 
         Keychain and are never shown again. {setup.livePublishing ? "Live publishing is on." : "Live publishing is off: connecting works, but nothing will be published until the app is started with live publishing enabled."}
       </p>
 
-      <Section
-        title="Instagram (Meta business portfolio)"
-        kind="instagram"
-        saved={c.instagram.businessTokenSaved}
-        onSaved={after}
-        fields={[{ name: "businessToken", label: "System-user access token", secret: true, saved: c.instagram.businessTokenSaved }]}
-        footer={
-          <p className="hint">
-            For Meta apps using “API setup with Unified login”. Generate the token in the Meta App Dashboard with only instagram_basic,
-            instagram_content_publish and business_management, and your Instagram accounts as assets. It doesn’t expire: it stays in the
-            Keychain, and you can revoke it in Meta Business settings › System users. Replacing or removing it here applies to every connected Instagram account.
-          </p>
-        }
-      />
+      <InstagramTokenSetup setup={setup} onSaved={after} />
       {/* Older Meta apps still offer "API setup with Instagram login". Removing either Instagram section removes both. */}
       <Section
         title="Instagram (older Meta apps: Instagram Login)"
@@ -66,19 +53,7 @@ function SetupBody({ onClose, onChanged }: { onClose: () => void; onChanged: () 
         ]}
         footer={<RedirectNote uri={setup.redirectUris.instagram} where="Meta App Dashboard › Instagram › API setup with Instagram login › Business login settings › OAuth redirect URIs" />}
       />
-      <Section
-        title="Pinterest"
-        kind="pinterest"
-        saved={c.pinterest.secretSaved}
-        onSaved={after}
-        fields={[
-          { name: "clientId", label: "Pinterest app ID", value: c.pinterest.clientId ?? "" },
-          { name: "clientSecret", label: "Pinterest app secret", secret: true, saved: c.pinterest.secretSaved },
-          { name: "redirectHost", label: "Redirect host", options: ["localhost", "127.0.0.1"], value: c.pinterest.redirectHost },
-          { name: "tier", label: "API access", options: ["trial", "standard"], value: c.pinterest.tier, labels: { trial: "Trial (sandbox Pins, visible only to you)", standard: "Standard (public Pins)" } },
-        ]}
-        footer={<RedirectNote uri={setup.redirectUris.pinterest} where="Pinterest developer site › My apps › your app › Configure › Redirect URIs" />}
-      />
+      <PinterestAppSetup setup={setup} onSaved={after} />
       <Section
         title="Cloudflare R2 (Instagram media delivery)"
         kind="r2"
@@ -108,6 +83,49 @@ function SetupBody({ onClose, onChanged }: { onClose: () => void; onChanged: () 
         </button>
       </div>
     </div>
+  );
+}
+
+interface SetupSectionProps {
+  setup: PlatformSetup;
+  onSaved: () => void;
+}
+
+/** The Meta business portfolio token: how new Meta apps connect Instagram accounts. */
+export function InstagramTokenSetup({ setup, onSaved }: SetupSectionProps) {
+  return (
+    <Section
+      title="Instagram (Meta business portfolio)"
+      kind="instagram"
+      saved={setup.config.instagram.businessTokenSaved}
+      onSaved={onSaved}
+      fields={[{ name: "businessToken", label: "System-user access token", secret: true, saved: setup.config.instagram.businessTokenSaved }]}
+      footer={
+        <p className="hint">
+          For Meta apps using “API setup with Unified login”. Generate the token in the Meta App Dashboard with only instagram_basic,
+          instagram_content_publish and business_management, and your Instagram accounts as assets. It doesn’t expire: it stays in the
+          Keychain, and you can revoke it in Meta Business settings › System users. Replacing or removing it here applies to every connected Instagram account.
+        </p>
+      }
+    />
+  );
+}
+
+export function PinterestAppSetup({ setup, onSaved }: SetupSectionProps) {
+  return (
+    <Section
+      title="Pinterest"
+      kind="pinterest"
+      saved={setup.config.pinterest.secretSaved}
+      onSaved={onSaved}
+      fields={[
+        { name: "clientId", label: "Pinterest app ID", value: setup.config.pinterest.clientId ?? "" },
+        { name: "clientSecret", label: "Pinterest app secret", secret: true, saved: setup.config.pinterest.secretSaved },
+        { name: "redirectHost", label: "Redirect host", options: ["localhost", "127.0.0.1"], value: setup.config.pinterest.redirectHost },
+        { name: "tier", label: "API access", options: ["trial", "standard"], value: setup.config.pinterest.tier, labels: { trial: "Trial (sandbox Pins, visible only to you)", standard: "Standard (public Pins)" } },
+      ]}
+      footer={<RedirectNote uri={setup.redirectUris.pinterest} where="Pinterest developer site › My apps › your app › Configure › Redirect URIs" />}
+    />
   );
 }
 

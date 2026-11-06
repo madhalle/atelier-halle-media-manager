@@ -326,3 +326,7 @@ dialog:has(.setup) { width: min(46rem, calc(100vw - 2rem)); max-height: calc(100
 .preview-pinterest img { object-fit: contain; }
 .preview-badge { position: absolute; top: 4px; right: 6px; color: white; text-shadow: 0 0 3px rgb(0 0 0 / 0.8); font-size: 0.85rem; pointer-events: none; }
 .new-board { display: grid; gap: 0.4rem; margin-top: 0.5rem; }
+.platform-choices { display: grid; grid-template-columns: 1fr 1fr; gap: 0.75rem; margin: 0.75rem 0 1rem; }
+.platform-choice { display: flex; flex-direction: column; align-items: center; gap: 0.5rem; padding: 1.25rem 1rem; font-weight: 600; }
+.platform-choice .platform-icon { width: 2.25rem; height: 2.25rem; }
+.add-account .setup-section, .connect-account { margin-bottom: 1rem; }

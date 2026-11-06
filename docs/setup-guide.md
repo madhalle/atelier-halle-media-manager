@@ -35,8 +35,9 @@ use the app ID and secret: see the end of this section.)
 6. Assign each Instagram account to the system user (Business settings ›
    Accounts › Instagram accounts › Assign people › the system user ›
    **Content**).
-7. For each Instagram tab: **Connect Instagram account**, choose the account,
-   then **Connect this account**. If Meta lists no accounts (observed for
+7. For each Instagram account: **Add account › Instagram › Connect Instagram
+   account**, choose the account, then **Connect this account**. If Meta lists
+   no accounts (observed for
    system users), enter the account's ID instead: it's shown under the
    username in Business settings › Accounts › Instagram accounts.
 8. Set up R2 (section 3). Instagram can't publish without it.
@@ -92,9 +93,13 @@ Each Pinterest account you'll post to should be a **business** account.
 
 ## 4. Connect accounts
 
-For each account tab, open its settings and choose **Connect**. Sign in on the
-platform and approve. The app checks the real account and its eligibility,
-then asks you to **Mark schedules reviewed** before anything publishes.
+Choose **Add account** (or **Add an account** on the welcome screen), pick
+Instagram or Pinterest, and connect. If that platform's app details aren't
+saved yet, the dialog asks for them first. Pinterest signs in on Pinterest
+and returns to the app. The account's tab appears only once it's connected;
+cancelling leaves nothing behind. The app checks the real account and its
+eligibility, then asks you to **Mark schedules reviewed** before anything
+publishes. To reconnect an existing account, use its tab's Account settings.
 
 ## 5. Enable live publishing (only when you're ready)
 

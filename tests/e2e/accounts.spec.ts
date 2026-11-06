@@ -1,23 +1,29 @@
-import { addAccountViaUi, createAccountsViaApi, expect, test } from "./server.ts";
+import { createAccountsViaApi, expect, test } from "./server.ts";
 
 const sidebar = (page: import("@playwright/test").Page) => page.getByRole("navigation", { name: "Accounts" });
 const tab = (page: import("@playwright/test").Page, name: string) =>
   sidebar(page).getByRole("button", { name: new RegExp(`^${name} `) });
 
-test("a fresh install starts empty with an Add account action", async ({ page, server }) => {
+test("a fresh install welcomes you with an Add an account action", async ({ page, server }) => {
   await server.signIn(page);
-  await expect(page.getByRole("heading", { name: "Welcome" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Welcome to Media Manager" })).toBeVisible();
   await expect(sidebar(page)).toContainText("No accounts yet");
-  await expect(page.getByRole("button", { name: "+ Add account" }).first()).toBeVisible();
+  await page.getByRole("button", { name: "Add an account" }).click();
+  const dialog = page.getByRole("dialog", { name: "Add account" });
+  await expect(dialog.getByRole("button", { name: "Instagram" })).toBeVisible();
+  await expect(dialog.getByRole("button", { name: "Pinterest" })).toBeVisible();
 });
 
 test("creates accounts on both platforms in a vertical sidebar and switches galleries", async ({ page, server }) => {
   await server.signIn(page);
-  await addAccountViaUi(page, "Instagram", "Personal Instagram");
-  await addAccountViaUi(page, "Instagram", "Business Instagram");
-  await addAccountViaUi(page, "Pinterest", "Atelier Halle Pinterest");
+  await createAccountsViaApi(page, [
+    { platform: "instagram", displayName: "Personal Instagram" },
+    { platform: "instagram", displayName: "Business Instagram" },
+    { platform: "pinterest", displayName: "Atelier Halle Pinterest" },
+  ]);
+  await page.reload();
 
-  // Newly created account is selected and shown in the main panel.
+  await tab(page, "Atelier Halle Pinterest").click();
   await expect(page.getByRole("heading", { level: 1, name: "Atelier Halle Pinterest" })).toBeVisible();
   await expect(tab(page, "Atelier Halle Pinterest")).toHaveAttribute("aria-current", "page");
   await expect(page.locator("main")).toContainText("Not connected");
@@ -51,8 +57,11 @@ test("creates accounts on both platforms in a vertical sidebar and switches gall
 
 test("accounts and order persist across a server restart", async ({ page, server }) => {
   await server.signIn(page);
-  await addAccountViaUi(page, "Pinterest", "Pins A");
-  await addAccountViaUi(page, "Instagram", "IG B");
+  await createAccountsViaApi(page, [
+    { platform: "pinterest", displayName: "Pins A" },
+    { platform: "instagram", displayName: "IG B" },
+  ]);
+  await page.reload();
   await page.getByRole("button", { name: "Settings for IG B" }).click();
   await page.getByRole("menuitem", { name: "Move up" }).click();
   await expect(sidebar(page).locator(".account-name")).toHaveText(["IG B", "Pins A"]);

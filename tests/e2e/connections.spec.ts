@@ -42,6 +42,65 @@ async function approveOn(page: Page, authorizeOrigin: string, code = "good-code"
   });
 }
 
+test("Add account: Instagram, saving the Meta token in the dialog, then choosing the account adds a connected tab", async ({ page, server }) => {
+  await server.signIn(page);
+  await page.getByRole("button", { name: "Add an account" }).click();
+  const dialog = page.getByRole("dialog", { name: "Add account" });
+  await dialog.getByRole("button", { name: "Instagram" }).click();
+
+  await dialog.getByLabel("System-user access token").fill(BUSINESS_TOKEN);
+  await dialog.getByRole("button", { name: "Save" }).click();
+  await dialog.getByRole("button", { name: "Connect Instagram account" }).click();
+  await dialog.getByLabel("Instagram account").selectOption({ label: "@studio_second" });
+  await expect(page.getByRole("navigation", { name: "Accounts" })).toContainText("No accounts yet"); // nothing until connected
+  await dialog.getByRole("button", { name: "Connect this account" }).click();
+
+  await expect(dialog).toBeHidden();
+  await expect(page.getByRole("status").filter({ hasText: "Added @studio_second." })).toBeVisible();
+  await expect(page.getByRole("navigation", { name: "Accounts" }).locator(".account-row")).toHaveCount(1);
+  await expect(page.locator("main")).toContainText("Connected as @studio_second (business)");
+  await previewSettled(page);
+  expect(await page.content()).not.toContain(BUSINESS_TOKEN);
+});
+
+test("Add account: Pinterest, entering the app details in the dialog, then signing in adds a connected tab", async ({ page, server }) => {
+  await server.signIn(page);
+  await approveOn(page, "https://www.pinterest.com");
+  await page.getByRole("button", { name: "Add an account" }).click();
+  const dialog = page.getByRole("dialog", { name: "Add account" });
+  await dialog.getByRole("button", { name: "Pinterest" }).click();
+
+  await dialog.getByLabel("Pinterest app ID").fill("1234567890123");
+  await dialog.getByLabel("Pinterest app secret").fill(PIN_SECRET);
+  await dialog.getByRole("button", { name: "Save" }).click();
+  await dialog.getByRole("button", { name: "Connect Pinterest account" }).click();
+
+  // Pinterest's sign-in leaves the app and returns to the new, now visible, tab.
+  await expect(page.locator("main")).toContainText("Connected as @atelierhalle (business)", { timeout: 15_000 });
+  await expect(page.getByRole("navigation", { name: "Accounts" }).locator(".account-row")).toHaveCount(1);
+  await previewSettled(page);
+});
+
+test("Add account: cancelling before connecting leaves no account behind", async ({ page, server }) => {
+  await server.signIn(page);
+  const dialog = await setUpPlatforms(page);
+  await dialog.getByRole("button", { name: "Close" }).click();
+  await page.getByRole("button", { name: "Add an account" }).click();
+  const add = page.getByRole("dialog", { name: "Add account" });
+  const started = page.waitForResponse((r) => r.url().endsWith("/api/accounts/setup") && r.request().method() === "POST");
+  await add.getByRole("button", { name: "Pinterest" }).click();
+  const setupId = ((await (await started).json()) as { account: { id: string } }).account.id;
+  await expect(add.getByRole("button", { name: "Connect Pinterest account" })).toBeEnabled();
+  const discarded = page.waitForResponse((r) => r.url().endsWith(`/api/accounts/${setupId}/setup`) && r.request().method() === "DELETE");
+  await add.getByRole("button", { name: "Cancel" }).click();
+  await expect(add).toBeHidden();
+  expect((await discarded).status()).toBe(204);
+
+  await page.reload();
+  await expect(page.getByRole("navigation", { name: "Accounts" })).toContainText("No accounts yet");
+  expect((await page.request.get(`${server.origin}/api/accounts/${setupId}`)).status()).toBe(404);
+});
+
 test("platform secrets are write-only in the UI", async ({ page, server }) => {
   await server.signIn(page);
   const dialog = await setUpPlatforms(page);

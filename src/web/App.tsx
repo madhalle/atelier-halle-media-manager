@@ -247,11 +247,15 @@ function Shell({ status, initialAccounts }: { status: Status; initialAccounts: A
         ) : (
           <div className="welcome">
             <h1 id="account-title" tabIndex={-1}>
-              {active.length === 0 && accounts.length === 0 ? "Welcome" : "No account selected"}
+              {active.length === 0 ? "Welcome to Media Manager" : "No account selected"}
             </h1>
-            <p>Add an Instagram or Pinterest account to start planning posts. Accounts start unconnected and never publish until connected.</p>
+            <p>
+              {active.length === 0
+                ? "Add an Instagram or Pinterest account to start planning posts."
+                : "Choose an account on the left, or add another."}
+            </p>
             <button type="button" className="primary" onClick={() => setAddOpen(true)}>
-              + Add account
+              Add an account
             </button>
           </div>
         )}
@@ -276,10 +280,12 @@ function Shell({ status, initialAccounts }: { status: Status; initialAccounts: A
       <AddAccountDialog
         open={addOpen}
         onClose={() => setAddOpen(false)}
-        onCreated={(a) => {
+        onConnected={(a) => {
           setAddOpen(false);
           setAccounts((list) => [...list.filter((x) => !x.archived), a, ...list.filter((x) => x.archived)]);
-          void select(a);
+          void select(a).then((ok) => {
+            if (ok) setNotice({ text: `Added ${a.connection.identity?.username ? `@${a.connection.identity.username}` : a.displayName}.`, tone: "info" });
+          });
         }}
       />
     </div>
