@@ -19,8 +19,9 @@ captions and crops, and posts that go out on time, exactly once.
 - **Single photos and carousels.** Up to 20 photos per Instagram carousel and
   5 per Pinterest carousel Pin, with add, remove and reorder.
 - **Platform-aware composer.** Captions, alt text, Pin titles, links and
-  boards, with each platform's limits validated live and an exact preview of
-  the crop that will be published.
+  boards (or a new board created on the spot), with each platform's limits
+  validated live and an exact preview of the crop that will be published.
+  Drafts save themselves when typing pauses.
 - **Scheduling that respects real time zones.** Explicit IANA time zones,
   with daylight-saving gaps and overlaps resolved explicitly instead of guessed.
 - **Reliable publishing.** A durable background scheduler publishes through
@@ -103,9 +104,11 @@ to confirm a test fails.
 ## Project status
 
 Feature-complete for single-photo and carousel posts, and fully tested against
-simulated platforms. Cloudflare R2 delivery is verified against the real
-service. **In progress:** first live posts (awaiting platform app approval) and
-Pinterest Standard API access.
+simulated platforms. Real accounts are connected: Instagram through a Meta
+business-portfolio system-user token, and Pinterest through Trial access on
+Pinterest's sandbox. Cloudflare R2 delivery is verified against the real
+service, and the background service runs at login. **In progress:** the first
+live posts and Pinterest Standard API access.
 
 ## How it was built
 
@@ -134,21 +137,21 @@ to view; see [LICENSE](LICENSE).
 | Vertical account sidebar, per-account main panel, narrow-screen drawer | ✅ Works |
 | Identity uniqueness and schedule-review rules | ✅ Works (enforced in the database; exercised by tests only, since connecting needs platform sign-in) |
 | Photo library: multi-file upload, dedupe, thumbnails, safe deletion | ✅ Works |
-| Drafts, platform-specific composer, crop with exact preview, validation | ✅ Works |
+| Drafts (autosaved), platform-specific composer, crop with exact preview, validation | ✅ Works |
 | Carousels: Instagram 2–20 photos, Pinterest 2–5; add, remove, reorder, shared crop shape | ✅ Works against test fakes; ⚠️ no live carousel yet |
 | Independent copies across accounts; deleting unpublished drafts | ✅ Works |
-| Pinterest board selection | ⏳ Needs a connected account (milestone 6) |
+| Pinterest board selection and creating a board from the Pin editor | ✅ Works (on Trial access, only sandbox boards are listed) |
 | Scheduling with explicit time zones and daylight-saving handling | ✅ Works |
 | Durable scheduler: leases, retries, missed-schedule policy, reconciliation, cancel | ✅ Works (tested against a simulated platform) |
 | Publishing history, needs-attention handling, scheduler health, settings | ✅ Works |
 | Platform setup (app IDs; secrets in the macOS Keychain) | ✅ Works |
-| Connect / disconnect via OAuth with identity and eligibility checks | ✅ Works against test fakes; ⚠️ not yet tried with real Meta/Pinterest apps |
-| Token storage and renewal | ✅ Works against test fakes; Keychain verified on this Mac |
+| Connect / disconnect with identity and eligibility checks | ✅ Works with real accounts (Pinterest OAuth on the sandbox; Instagram by system-user token) |
+| Token storage and renewal | ✅ Storage works with real tokens in the Keychain; renewal tested against fakes |
 | Pinterest publishing (direct upload, sandbox/standard) | ⚠️ Built and tested against fakes; no live Pin yet |
 | Instagram publishing via R2 media delivery | ⚠️ Built and tested against fakes; no live post yet |
 | R2 "Test connection" (upload, presigned read, delete) | ✅ Verified against the real R2 service |
 | Backups: daily, before upgrades, manual; verify, export, restore | ✅ Works (tested) |
-| Background service (LaunchAgent) | ⚠️ Built and tested; not yet installed on this Mac |
+| Background service (LaunchAgent) | ✅ Installed and running on this Mac |
 | Backups and service panel (status, back up now, check backups) | ✅ Works |
 
 More documentation:
