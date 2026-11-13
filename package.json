@@ -22,6 +22,8 @@
     "test:watch": "vitest",
     "check": "npm run typecheck && npm run lint && npm run check:secrets && npm test",
     "test:e2e": "npm run build && playwright test",
+    "qa": "npm run build && QA_RECORDING=enabled playwright test",
+    "qa:report": "playwright show-report",
     "audit:deps": "npm audit && npm audit signatures && npm install-scripts ls",
     "check:secrets": "node scripts/check-secrets.ts"
   },

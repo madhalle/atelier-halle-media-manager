@@ -287,6 +287,14 @@ Playwright uses its own Chromium build. Install it once with
 `~/Library/Caches/ms-playwright`. Each test starts the real server on its own
 temporary data directory.
 
+For QA review, record a video, a final screenshot and a step-by-step trace of
+each test, then browse them in Playwright's HTML report:
+
+```sh
+npm run qa              # all browser tests; or e.g. `npm run qa -- posts`
+npm run qa:report       # open the report
+```
+
 ## Photos
 
 - **Accepted:** JPEG, PNG and WebP, up to 50 MB and 100 megapixels each.
