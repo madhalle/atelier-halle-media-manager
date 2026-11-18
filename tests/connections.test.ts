@@ -330,7 +330,7 @@ describe("Pinterest boards", () => {
     fakes.state.pin.boardsWriteDenied = true;
     const res = await call("POST", `/api/accounts/${a.id}/boards`, { name: "Rings" });
     expect(res.statusCode).toBe(409);
-    expect(res.json().message).toMatch(/connect this account again/);
+    expect(res.json()).toMatchObject({ error: "reconnect_required", message: expect.stringMatching(/Reconnect Pinterest/) });
   });
 });
 

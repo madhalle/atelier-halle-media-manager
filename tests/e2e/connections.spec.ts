@@ -275,6 +275,39 @@ test("creates a Pinterest board from the Pin editor and chooses it", async ({ pa
   expect(providers.state.pin.boards.map((b) => b.name)).toContain("Rings");
 });
 
+test("a connected account can reconnect in place, and the board picker offers it when Pinterest refuses", async ({ page, server, providers }) => {
+  await server.signIn(page);
+  await createAccountsViaApi(page, [{ platform: "pinterest", displayName: "Atelier Halle Pinterest" }]);
+  await page.reload();
+  const dialog = await setUpPlatforms(page);
+  await dialog.getByRole("button", { name: "Close" }).click();
+  await page.reload();
+  await approveOn(page, "https://www.pinterest.com");
+  await page.getByRole("button", { name: "Connect Pinterest account" }).click();
+  await expect(page.locator("main")).toContainText("Connected as @atelierhalle (business)", { timeout: 15_000 });
+  await previewSettled(page);
+
+  // Account settings: reconnect without disconnecting first.
+  await expect(page.locator("main")).toContainText("Reconnect to sign in to Pinterest again");
+  await page.getByRole("button", { name: "Reconnect Pinterest" }).click();
+  await expect(page.locator("main")).toContainText("Connected as @atelierhalle (business)", { timeout: 15_000 });
+  await previewSettled(page);
+  await expect(page.getByRole("navigation", { name: "Accounts" }).locator(".account-row")).toHaveCount(1);
+
+  // A connection that can't manage boards: the error offers the same reconnect in place.
+  providers.state.pin.boardsWriteDenied = true;
+  await page.getByRole("button", { name: "New post" }).click();
+  await page.getByRole("dialog").locator('input[type="file"]').setInputFiles([{ name: "ring.jpg", mimeType: "image/jpeg", buffer: await jpeg(1000, 1500) }]);
+  await page.getByRole("button", { name: "Use for new post: ring.jpg" }).click();
+  await page.getByRole("button", { name: "New board…" }).click();
+  await page.getByLabel("New board name").fill("Jewelry");
+  await page.getByRole("button", { name: "Create board" }).click();
+  await expect(page.getByRole("alert").filter({ hasText: "Reconnect Pinterest and allow managing boards." })).toBeVisible();
+  providers.state.pin.boardsWriteDenied = false; // the new sign-in grants it
+  await page.getByRole("button", { name: "Reconnect Pinterest" }).click();
+  await expect(page.locator("main")).toContainText("Connected as @atelierhalle (business)", { timeout: 15_000 });
+});
+
 test("tests the R2 connection from Platform setup without showing the secret", async ({ page, server, providers }) => {
   await server.signIn(page);
   await page.getByRole("button", { name: "Platform setup" }).click();

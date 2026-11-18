@@ -54,6 +54,7 @@ const DOMAIN_STATUS: Record<DomainErrorCode, number> = {
   stale_revision: 409,
   invalid_state: 409,
   duplicate_identity: 409,
+  reconnect_required: 409,
 };
 
 declare module "fastify" {

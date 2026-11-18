@@ -221,7 +221,7 @@ export function validatePost(platform: Platform, post: PostFields & { media: Pos
     if (chars(post.pinLink) > l.link) block("pinLink", `Links can be at most ${l.link} characters.`);
     else if (!isValidLink(post.pinLink)) block("pinLink", "Enter a full web address starting with https:// (or leave it empty).");
     if (chars(post.altText) > l.altText) block("altText", `Alt text can be at most ${l.altText} characters.`);
-    if (!post.pinBoardId) block("pinBoard", "Choose a board. Boards load after the account is connected.");
+    if (!post.pinBoardId) block("pinBoard", "Choose a board.");
     if (post.pinTitle.trim() === "") warn("pinTitle", "The title is empty.");
   }
   // Instagram's docs don't confirm alt text on carousel items, so it isn't sent there (see the composer hint).

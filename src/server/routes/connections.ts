@@ -139,6 +139,10 @@ export function registerConnectionRoutes(api: FastifyInstance, d: ConnectionRout
     }
   });
 
+  // An expired or under-permissioned connection is fixed by signing in again, which the UI offers in place.
+  const boardError = (err: unknown) =>
+    err instanceof PlatformError ? new DomainError(err.kind === "auth_expired" ? "reconnect_required" : "invalid_state", err.safeMessage) : err;
+
   api.get("/accounts/:id/boards", async (req) => {
     const { id } = IdParams.parse(req.params);
     const account = d.accounts.get(id);
@@ -147,8 +151,7 @@ export function registerConnectionRoutes(api: FastifyInstance, d: ConnectionRout
     try {
       return { boards: await d.pinterest.listBoards(account) };
     } catch (err) {
-      if (err instanceof PlatformError) throw new DomainError("invalid_state", err.safeMessage);
-      throw err;
+      throw boardError(err);
     }
   });
 
@@ -161,8 +164,7 @@ export function registerConnectionRoutes(api: FastifyInstance, d: ConnectionRout
     try {
       return { board: await d.pinterest.createBoard(account, name) };
     } catch (err) {
-      if (err instanceof PlatformError) throw new DomainError("invalid_state", err.safeMessage);
-      throw err;
+      throw boardError(err);
     }
   });
 
@@ -178,8 +180,7 @@ export function registerConnectionRoutes(api: FastifyInstance, d: ConnectionRout
     try {
       boards = await d.pinterest.listBoards(account);
     } catch (err) {
-      if (err instanceof PlatformError) throw new DomainError("invalid_state", err.safeMessage);
-      throw err;
+      throw boardError(err);
     }
     const board = boards.find((b) => b.id === boardId);
     if (!board) throw new DomainError("validation", "That board isn't on this Pinterest account.");

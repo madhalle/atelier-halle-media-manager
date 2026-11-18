@@ -71,8 +71,14 @@ export function ConnectAccount({ account: a, onConnected }: { account: Account; 
 
   return (
     <div className="connect-account">
-      {route === "business" && !choices && <p className="hint">Connecting uses your Meta business portfolio token: choose which Instagram account to post to.</p>}
-      {route === "sign-in" && <p className="hint">Connecting signs in to {label}, verifies the real account and checks it can publish.</p>}
+      {a.connection.state === "connected" ? (
+        route === "sign-in" && <p className="hint">Reconnect to sign in to {label} again, for example to allow new permissions. Posts and schedules are kept.</p>
+      ) : (
+        <>
+          {route === "business" && !choices && <p className="hint">Connecting uses your Meta business portfolio token: choose which Instagram account to post to.</p>}
+          {route === "sign-in" && <p className="hint">Connecting signs in to {label}, verifies the real account and checks it can publish.</p>}
+        </>
+      )}
       {route === "not-set-up" && <p className="hint">Set up the {label} developer app first: Settings › Platform setup.</p>}
 
       {choices && choices.length === 0 && (

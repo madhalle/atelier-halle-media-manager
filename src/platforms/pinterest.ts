@@ -138,7 +138,7 @@ export function createPinterestAdapter(deps: { http: HttpClient; endpoints: Endp
       });
       if (res.status === 401 || res.status === 403) {
         // Accounts connected before boards:write was requested lack it.
-        throw new PlatformError("auth_expired", `http_${res.status}`, "Pinterest didn't allow creating a board. Disconnect and connect this account again, and allow managing boards.");
+        throw new PlatformError("auth_expired", `http_${res.status}`, "Pinterest didn't allow creating a board. Reconnect Pinterest and allow managing boards.");
       }
       if (res.status !== 200 && res.status !== 201) throw classifyResponse("pinterest", res, "create the board");
       const b = BoardCreated.safeParse(res.json);

@@ -6,6 +6,7 @@ import {
   createBoard,
   listBoards,
   setPostBoard,
+  startConnect,
   type Board,
   deletePost,
   derivativeUrl,
@@ -608,20 +609,38 @@ function BoardPicker({ post, account, editable, dirty, onSaved }: { post: Post; 
   const [error, setError] = useState<string | null>(null);
   const [newName, setNewName] = useState<string | null>(null);
   const [creating, setCreating] = useState(false);
+  const [reconnect, setReconnect] = useState(false);
+  const { confirmDiscard } = useGuard();
   const connected = account.connection.state === "connected";
+
+  const showError = (err: unknown, fallback: string) => {
+    setError(err instanceof ApiError ? err.message : fallback);
+    setReconnect(err instanceof ApiError && err.code === "reconnect_required");
+  };
+
+  // Same tab: Pinterest redirects back to this app to finish signing in.
+  const signInAgain = async () => {
+    if (!(await confirmDiscard())) return;
+    try {
+      window.location.assign(await startConnect(account.id));
+    } catch (err) {
+      showError(err, "Couldn't start reconnecting.");
+    }
+  };
 
   useEffect(() => {
     if (!connected) return;
     listBoards(account.id)
       .then(setBoards)
-      .catch((err: unknown) => setError(err instanceof ApiError ? err.message : "Couldn't load boards."));
+      .catch((err: unknown) => showError(err, "Couldn't load boards."));
   }, [account.id, connected]);
 
   const choose = (boardId: string) => {
     setError(null);
+    setReconnect(false);
     setPostBoard(post, boardId)
       .then(onSaved)
-      .catch((err: unknown) => setError(err instanceof ApiError ? err.message : "Couldn't set the board."));
+      .catch((err: unknown) => showError(err, "Couldn't set the board."));
   };
 
   // Not a nested <form>: this sits inside the composer's form.
@@ -629,13 +648,14 @@ function BoardPicker({ post, account, editable, dirty, onSaved }: { post: Post; 
     if (!newName?.trim()) return;
     setCreating(true);
     setError(null);
+    setReconnect(false);
     try {
       const board = await createBoard(account.id, newName);
       setBoards((bs) => [...(bs ?? []), board]);
       setNewName(null);
       choose(board.id);
     } catch (err) {
-      setError(err instanceof ApiError ? err.message : "Couldn't create the board.");
+      showError(err, "Couldn't create the board.");
     } finally {
       setCreating(false);
     }
@@ -710,6 +730,13 @@ function BoardPicker({ post, account, editable, dirty, onSaved }: { post: Post; 
       {error && (
         <p className="error" role="alert">
           {error}
+        </p>
+      )}
+      {reconnect && (
+        <p>
+          <button type="button" className="primary" onClick={() => void signInAgain()}>
+            Reconnect Pinterest
+          </button>
         </p>
       )}
     </div>

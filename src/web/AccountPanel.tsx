@@ -141,7 +141,7 @@ function ConnectionControls({ account: a, onUpdated }: { account: Account; onUpd
         {identity?.username ? ` as @${identity.username}` : ""}
         {identity?.accountType ? ` (${identity.accountType.toLowerCase()})` : ""}.
       </p>
-      {a.connection.state !== "connected" && <ConnectAccount account={a} onConnected={onUpdated} />}
+      <ConnectAccount account={a} onConnected={onUpdated} />
       {a.connection.state !== "unconnected" && (
         <div className="setup-actions">
           <button type="button" className="danger" disabled={busy} onClick={() => void disconnect()}>
