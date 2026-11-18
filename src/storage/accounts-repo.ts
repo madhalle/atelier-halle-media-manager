@@ -108,6 +108,10 @@ export function createAccountsRepo(db: Db, now: () => Date = () => new Date()) {
   }
 
   const bump = "revision = revision + 1, updated_at = @now";
+  // Account changes pause pending schedules for review, but only when there is
+  // something to pause: an account with nothing scheduled has nothing to review.
+  const pauseIfPending =
+    "schedules_need_review = CASE WHEN EXISTS (SELECT 1 FROM posts WHERE account_id = @id AND status IN ('scheduled', 'retry_waiting')) THEN 1 ELSE 0 END";
 
   // Sort order is taken at creation, so a finished setup lands at the end of the list.
   function insert(platform: Platform, displayName: string, setupPending: boolean): Account {
@@ -172,7 +176,7 @@ export function createAccountsRepo(db: Db, now: () => Date = () => new Date()) {
       return mutate(id, (a) => {
         checkRevision(a, expectedRevision);
         assertCanArchive(a);
-        db.prepare(`UPDATE accounts SET archived_at = @now, schedules_need_review = 1, ${bump} WHERE id = @id`).run({
+        db.prepare(`UPDATE accounts SET archived_at = @now, ${pauseIfPending}, ${bump} WHERE id = @id`).run({
           id,
           now: iso(),
         });
@@ -193,7 +197,7 @@ export function createAccountsRepo(db: Db, now: () => Date = () => new Date()) {
           (a.connectionState === "connected" || a.connectionState === "needs_reconnect") &&
           selectIdentityOwner.get(a.platform, a.identity.providerAccountId) !== undefined;
         db.prepare(
-          `UPDATE accounts SET archived_at = NULL, sort_order = @order, schedules_need_review = 1,
+          `UPDATE accounts SET archived_at = NULL, sort_order = @order, ${pauseIfPending},
              connection_state = CASE WHEN @taken THEN 'disconnected' ELSE connection_state END,
              credential_ref = CASE WHEN @taken THEN NULL ELSE credential_ref END,
              ${bump}
@@ -202,7 +206,7 @@ export function createAccountsRepo(db: Db, now: () => Date = () => new Date()) {
       });
     },
 
-    /** Records a verified platform identity. Any connection change requires schedule review. */
+    /** Records a verified platform identity. Any connection change requires schedule review if anything is scheduled. */
     markConnected(id: string, identity: VerifiedIdentity, credentialRef: string): Account {
       try {
         return mutate(id, (a) => {
@@ -212,7 +216,7 @@ export function createAccountsRepo(db: Db, now: () => Date = () => new Date()) {
             `UPDATE accounts SET connection_state = 'connected', provider_account_id = @pid,
                provider_username = @username, provider_display_name = @pname, provider_avatar_url = @avatar,
                provider_account_type = @type, identity_verified_at = @verifiedAt, credential_ref = @cred,
-               schedules_need_review = 1, setup_pending = 0, ${bump}
+               ${pauseIfPending}, setup_pending = 0, ${bump}
              WHERE id = @id`,
           ).run({
             id,
@@ -240,7 +244,7 @@ export function createAccountsRepo(db: Db, now: () => Date = () => new Date()) {
         if (a.connectionState === "unconnected") throw new DomainError("invalid_state", "This account is not connected.");
         db.prepare(
           `UPDATE accounts SET connection_state = 'disconnected', credential_ref = NULL,
-             schedules_need_review = 1, ${bump}
+             ${pauseIfPending}, ${bump}
            WHERE id = @id`,
         ).run({ id, now: iso() });
       });

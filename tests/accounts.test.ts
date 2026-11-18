@@ -1,3 +1,5 @@
+import { randomUUID } from "node:crypto";
+import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { accountLabel, canPublish, normalizeDisplayName, type VerifiedIdentity } from "../src/domain/accounts.ts";
@@ -39,6 +41,12 @@ describe("accounts repository", () => {
     db.close();
     dir.cleanup();
   });
+
+  /** A post waiting to publish, so account changes have a schedule to pause. */
+  const schedulePending = (accountId: string) => {
+    const now = new Date().toISOString();
+    db.prepare("INSERT INTO posts (id, account_id, status, created_at, updated_at) VALUES (?, ?, 'scheduled', ?, ?)").run(randomUUID(), accountId, now, now);
+  };
 
   it("starts empty on a fresh install", () => {
     expect(repo.list({ includeArchived: true })).toEqual([]);
@@ -104,6 +112,7 @@ describe("accounts repository", () => {
   it("archives and restores without deleting, and requires schedule review after restore", () => {
     const a = repo.create({ platform: "instagram", displayName: "A" });
     const b = repo.create({ platform: "instagram", displayName: "B" });
+    schedulePending(a.id);
     const archived = repo.archive(a.id);
     expect(archived.archivedAt).not.toBeNull();
     expect(repo.list().map((x) => x.id)).toEqual([b.id]);
@@ -142,6 +151,7 @@ describe("accounts repository", () => {
 
   it("disconnecting removes the credential reference, keeps the identity, and pauses schedules", () => {
     const a = repo.create({ platform: "pinterest", displayName: "A" });
+    schedulePending(a.id);
     repo.acknowledgeScheduleReview(repo.markConnected(a.id, identity("9"), "kc:a").id);
     const d = repo.markDisconnected(a.id);
     expect(d).toMatchObject({ connectionState: "disconnected", credentialRef: null, schedulesNeedReview: true });
@@ -151,6 +161,7 @@ describe("accounts repository", () => {
 
   it("reconnecting requires review and refuses to swap to a different real account", () => {
     const a = repo.create({ platform: "instagram", displayName: "A" });
+    schedulePending(a.id);
     repo.markConnected(a.id, identity("1"), "kc:a");
     repo.acknowledgeScheduleReview(a.id);
     repo.markDisconnected(a.id);
@@ -165,10 +176,34 @@ describe("accounts repository", () => {
     const a = repo.create({ platform: "instagram", displayName: "A" });
     const b = repo.create({ platform: "instagram", displayName: "B" });
     repo.markConnected(a.id, identity("1"), "kc:a");
+    schedulePending(a.id);
     repo.archive(a.id);
     repo.markConnected(b.id, identity("1"), "kc:b");
     const restored = repo.restore(a.id);
     expect(restored).toMatchObject({ connectionState: "disconnected", credentialRef: null, schedulesNeedReview: true });
+  });
+
+  it("account changes pause nothing when nothing is scheduled", () => {
+    const a = repo.create({ platform: "instagram", displayName: "A" });
+    expect(repo.markConnected(a.id, identity("1"), "kc:a").schedulesNeedReview).toBe(false);
+    expect(repo.markDisconnected(a.id).schedulesNeedReview).toBe(false);
+    expect(repo.archive(a.id).schedulesNeedReview).toBe(false);
+    const restored = repo.restore(a.id);
+    expect(restored.schedulesNeedReview).toBe(false);
+    // A draft isn't a schedule, so it doesn't pause anything either.
+    const now = new Date().toISOString();
+    db.prepare("INSERT INTO posts (id, account_id, status, created_at, updated_at) VALUES (?, ?, 'draft', ?, ?)").run(randomUUID(), a.id, now, now);
+    expect(repo.markConnected(a.id, identity("1"), "kc:a2").schedulesNeedReview).toBe(false);
+  });
+
+  it("the upgrade clears pauses left on accounts with nothing scheduled", () => {
+    const idle = repo.create({ platform: "instagram", displayName: "Idle" });
+    const busy = repo.create({ platform: "pinterest", displayName: "Busy" });
+    schedulePending(busy.id);
+    db.prepare("UPDATE accounts SET schedules_need_review = 1").run();
+    db.exec(readFileSync(join(import.meta.dirname, "..", "migrations", "0006_unpause_accounts_without_schedules.sql"), "utf8"));
+    expect(repo.get(idle.id).schedulesNeedReview).toBe(false);
+    expect(repo.get(busy.id).schedulesNeedReview).toBe(true);
   });
 
   it("archived accounts cannot connect or be marked reviewed", () => {
@@ -217,7 +252,7 @@ describe("accounts API", () => {
     expect((await call("GET", "/api/accounts?includeArchived=true")).json().accounts).toHaveLength(2);
 
     const restored = await call("POST", `/api/accounts/${pin.id}/restore`, { revision: archived.json().account.revision });
-    expect(restored.json().account).toMatchObject({ archived: false, schedulesNeedReview: true });
+    expect(restored.json().account).toMatchObject({ archived: false, schedulesNeedReview: false }); // nothing was scheduled
   });
 
   it("adds an account in setup: hidden, unable to hold posts, and discardable only until connected", async () => {

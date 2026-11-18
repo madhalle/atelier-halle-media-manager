@@ -106,7 +106,7 @@ test("keyboard: arrow keys move between accounts and the settings menu reorders"
   await expect(menuButton).toBeFocused();
 });
 
-test("archive keeps the account restorable and restore requires schedule review", async ({ page, server }) => {
+test("archive keeps the account restorable", async ({ page, server }) => {
   await server.signIn(page);
   await createAccountsViaApi(page, [
     { platform: "instagram", displayName: "Keep" },
@@ -124,7 +124,8 @@ test("archive keeps the account restorable and restore requires schedule review"
   await tab(page, "Old Pins").click();
   await expect(page.locator("main")).toContainText("Archived");
   await page.getByRole("button", { name: "Restore account" }).click();
-  await expect(page.locator("main")).toContainText("Pending schedules are paused until you review them.");
+  await expect(page.locator("main")).not.toContainText("Archived");
+  await expect(page.locator("main")).not.toContainText("paused for review"); // nothing was scheduled
   await expect(sidebar(page).locator(".account-list:not(.archived) .account-name")).toHaveText(["Keep", "Old Pins"]);
 });
 

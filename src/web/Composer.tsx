@@ -12,6 +12,7 @@ import {
   MAX_PHOTOS,
   PLATFORM_ASPECTS,
   PLATFORM_LABEL,
+  publishingBlockers,
   STATUS_LABEL,
   setPostMedia,
   updatePost,
@@ -428,7 +429,7 @@ export function Composer({ post, account, defaultTimezone, onNotice, onSaved, on
             </ul>
           )}
           {!account.publishing.ready && (
-            <p className="hint">Even when ready, this account won’t publish until: {account.publishing.blockers.join(" ")}</p>
+            <p className="hint">Even when ready, this account won’t publish until: {publishingBlockers(account).join(" ")}</p>
           )}
         </section>
         )}

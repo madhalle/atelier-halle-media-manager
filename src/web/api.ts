@@ -233,6 +233,16 @@ export const deletePost = (post: Post) => request<{ ok: true }>("DELETE", `/api/
 export const copyPost = (post: Post, accountIds: string[]) =>
   request<{ posts: Post[] }>("POST", `/api/posts/${post.id}/copies`, { accountIds }).then((r) => r.posts);
 
+/** Why this account won't publish: account-level blockers, plus schedules paused for review. */
+export function publishingBlockers(account: Account): string[] {
+  const blockers = account.publishing.blockers;
+  return account.schedulesNeedReview ? [...blockers, "Pending schedules are paused until you review them."] : blockers;
+}
+
+/** A scheduled post that won't publish until its account's schedules are reviewed. */
+export const isPausedForReview = (post: Post, account: Account) =>
+  account.schedulesNeedReview && (post.status === "scheduled" || post.status === "retry_waiting");
+
 export const STATUS_LABEL: Record<PostStatus, string> = {
   draft: "Draft",
   scheduled: "Scheduled",

@@ -160,7 +160,7 @@ describe("connecting accounts (OAuth)", () => {
     expect(res.statusCode).toBe(200);
     expect(res.json().account).toMatchObject({
       connection: { state: "connected", identity: { username: "atelierhalle", accountType: "BUSINESS" } },
-      schedulesNeedReview: true,
+      schedulesNeedReview: false, // nothing scheduled, nothing to review
     });
     // Exchange used the exact registered redirect URI and the secret server-side.
     const ex = fakes.calls("ig-api", "/oauth/access_token")[0]!;

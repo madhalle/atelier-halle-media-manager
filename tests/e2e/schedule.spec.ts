@@ -37,10 +37,44 @@ async function connectedInstagram(page: Page, server: { fakeConnect: (id: string
   const [id] = await createAccountsViaApi(page, [{ platform: "instagram", displayName: "Business Instagram" }]);
   server.fakeConnect(id!);
   await page.reload();
-  // Connecting always pauses schedules for review first.
-  await page.getByRole("button", { name: "Mark schedules reviewed" }).click();
+  // With nothing scheduled yet, connecting pauses nothing.
+  await expect(page.locator("main")).toContainText("Connected");
   await expect(page.locator("main")).not.toContainText("Won’t publish automatically");
 }
+
+test("schedules paused by archiving and restoring wait under Needs attention until resumed", async ({ page, server }) => {
+  await server.signIn(page);
+  await connectedInstagram(page, server);
+  await draftWithCaption(page, "Tomorrow's post");
+  const tomorrow = new Date(Date.now() + 24 * 3600_000).toISOString().slice(0, 10);
+  await scheduleAt(page, tomorrow, "10:00");
+  await expect(page.locator(".schedule-panel")).toContainText("Scheduled for");
+  await page.getByRole("button", { name: "← Back to posts" }).click();
+
+  await page.getByRole("button", { name: "Settings for @simulated_instagram" }).click();
+  await page.getByRole("menuitem", { name: "Archive…" }).click();
+  await page.getByRole("dialog").getByRole("button", { name: "Archive account" }).click();
+  await sidebar(page).getByRole("button", { name: "Archived (1)" }).click();
+  await tab(page, "@simulated_instagram").click();
+  await page.getByRole("button", { name: "Restore account" }).click();
+
+  // The paused post moves from Scheduled to Needs attention, with the reason in a tooltip.
+  await expect(page.getByRole("button", { name: /^Scheduled 0$/ })).toBeVisible();
+  await expect(page.getByRole("alert").filter({ hasText: "1 post needs your attention." })).toBeVisible();
+  await page.getByRole("button", { name: /^Needs attention 1$/ }).click();
+  await expect(page.locator(".paused-review")).toContainText("1 scheduled post is paused for review");
+  await expect(page.locator(".post-card")).toContainText("Paused for review");
+  const why = page.getByRole("button", { name: "Why are they paused?" });
+  await why.focus();
+  await expect(page.getByRole("tooltip")).toBeVisible();
+  await expect(why).toHaveAccessibleDescription(/nothing publishes without your review/);
+
+  await page.getByRole("button", { name: "Resume schedules" }).click();
+  await expect(page.locator(".paused-review")).toHaveCount(0);
+  await expect(page.getByRole("button", { name: /^Needs attention 0$/ })).toBeVisible();
+  await page.getByRole("button", { name: /^Scheduled 1$/ }).click();
+  await expect(page.locator(".post-card .status")).toHaveText("Scheduled");
+});
 
 test("a due post publishes (simulated) with the backend alone, and history records it", async ({ page, server }) => {
   await server.signIn(page);

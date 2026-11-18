@@ -139,7 +139,7 @@ test("connects an Instagram Business account through the real callback flow", as
   await previewSettled(page);
   expect(page.url()).not.toContain("code=");
   expect(new URL(page.url()).hostname).toBe("127.0.0.1");
-  await expect(page.locator("main")).toContainText("Pending schedules are paused until you review them.");
+  await expect(page.locator("main")).not.toContainText("Won’t publish automatically"); // nothing scheduled, nothing paused
   expect(await page.content()).not.toMatch(/IG-(LONG|SHORT)-/);
 });
 

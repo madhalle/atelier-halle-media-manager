@@ -84,7 +84,7 @@ describe("connecting with a business portfolio token", () => {
 
     const res = await call("POST", `/api/accounts/${a.id}/connect-business`, { instagramUserId: "17841400000000002" });
     expect(res.statusCode).toBe(200);
-    expect(res.json().account).toMatchObject({ connection: { state: "connected", identity: { username: "studio_second" } }, schedulesNeedReview: true });
+    expect(res.json().account).toMatchObject({ connection: { state: "connected", identity: { username: "studio_second" } }, schedulesNeedReview: false }); // nothing scheduled, nothing to review
 
     const ref = (t.db.prepare("SELECT credential_ref AS r FROM accounts WHERE id = ?").get(a.id) as { r: string }).r;
     const stored = JSON.parse(store.dump().get(ref)!);

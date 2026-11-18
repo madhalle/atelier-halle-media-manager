@@ -7,6 +7,7 @@ import {
   formatInZone,
   listAttempts,
   PLATFORM_LABEL,
+  publishingBlockers,
   resolveOutcome,
   ScheduleConflict,
   schedulePost,
@@ -240,7 +241,7 @@ export function StatusSummary({ post, account }: { post: Post; account: Account 
       return (
         <p className="state scheduled">
           Scheduled for <strong>{formatInZone(post.scheduledAt!, zone)}</strong>
-          {!account.publishing.ready && <span className="hint"> · paused: {account.publishing.blockers[0]}</span>}
+          {!account.publishing.ready && <span className="hint"> · paused: {publishingBlockers(account)[0]}</span>}
         </p>
       );
     case "retry_waiting":

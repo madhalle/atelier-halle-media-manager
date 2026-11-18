@@ -3,15 +3,22 @@ import { useCallback, useEffect, useState } from "react";
 import { Composer } from "./Composer.tsx";
 import { CopyDialog } from "./CopyDialog.tsx";
 import { PhotoLibraryDialog } from "./PhotoLibrary.tsx";
-import { ApiError, createPost, formatInZone, getPost, getSettings, listPosts, STATUS_LABEL, type Account, type Post, type PostStatus, type StatusCounts } from "./api.ts";
+import { ApiError, createPost, formatInZone, getPost, getSettings, isPausedForReview, listPosts, STATUS_LABEL, type Account, type Post, type PostStatus } from "./api.ts";
 import { useGuard } from "./dialogs.tsx";
 
-const FILTERS: { key: string; label: string; statuses: PostStatus[] | null }[] = [
+// Scheduled posts paused for review are listed under "Needs attention", not "Scheduled".
+type ListStatus = PostStatus | "paused";
+const listStatus = (post: Post, account: Account): ListStatus => (isPausedForReview(post, account) ? "paused" : post.status);
+
+const PAUSED_EXPLANATION =
+  "Schedules pause after you connect, disconnect, archive or restore this account, so nothing publishes without your review.";
+
+const FILTERS: { key: string; label: string; statuses: ListStatus[] | null }[] = [
   { key: "all", label: "All", statuses: null },
   { key: "draft", label: "Drafts", statuses: ["draft", "canceled"] },
   { key: "scheduled", label: "Scheduled", statuses: ["scheduled", "preparing", "publishing", "retry_waiting"] },
   { key: "published", label: "Published", statuses: ["published"] },
-  { key: "attention", label: "Needs attention", statuses: ["needs_attention"] },
+  { key: "attention", label: "Needs attention", statuses: ["needs_attention", "paused"] },
 ];
 
 interface Props {
@@ -20,12 +27,12 @@ interface Props {
   openPostId: string | null;
   onOpenPost: (id: string | null) => void;
   onNotice: (text: string) => void;
+  onResumeSchedules: () => void;
 }
 
-export function PostsSection({ account, accounts, openPostId, onOpenPost, onNotice }: Props) {
+export function PostsSection({ account, accounts, openPostId, onOpenPost, onNotice, onResumeSchedules }: Props) {
   const { confirmDiscard } = useGuard();
   const [posts, setPosts] = useState<Post[] | null>(null);
-  const [counts, setCounts] = useState<StatusCounts | null>(null);
   const [filter, setFilter] = useState("all");
   const [library, setLibrary] = useState<"closed" | "browse" | "pick">("closed");
   const [copying, setCopying] = useState<Post | null>(null);
@@ -37,7 +44,6 @@ export function PostsSection({ account, accounts, openPostId, onOpenPost, onNoti
     try {
       const r = await listPosts(account.id);
       setPosts(r.posts);
-      setCounts(r.counts);
     } catch {
       setError("Could not load posts.");
     }
@@ -123,9 +129,11 @@ export function PostsSection({ account, accounts, openPostId, onOpenPost, onNoti
   }
 
   const active = FILTERS.find((f) => f.key === filter)!;
-  const shown = (posts ?? []).filter((p) => !active.statuses || active.statuses.includes(p.status));
-  const countFor = (f: (typeof FILTERS)[number]) =>
-    counts ? (f.statuses ? f.statuses.reduce((n, s) => n + counts[s], 0) : Object.values(counts).reduce((n, c) => n + c, 0)) : 0;
+  const inFilter = (f: (typeof FILTERS)[number]) => (p: Post) => !f.statuses || f.statuses.includes(listStatus(p, account));
+  const shown = (posts ?? []).filter(inFilter(active));
+  const countFor = (f: (typeof FILTERS)[number]) => (posts ?? []).filter(inFilter(f)).length;
+  const attentionCount = countFor(FILTERS.find((f) => f.key === "attention")!);
+  const pausedCount = (posts ?? []).filter((p) => isPausedForReview(p, account)).length;
 
   return (
     <section aria-labelledby="posts-heading" className="posts">
@@ -154,13 +162,32 @@ export function PostsSection({ account, accounts, openPostId, onOpenPost, onNoti
           {error}
         </p>
       )}
-      {counts && counts.needs_attention > 0 && filter !== "attention" && (
+      {attentionCount > 0 && filter !== "attention" && (
         <div className="notice-bar error" role="alert">
           <span>
-            {counts.needs_attention} post{counts.needs_attention === 1 ? " needs" : "s need"} your attention.
+            {attentionCount} post{attentionCount === 1 ? " needs" : "s need"} your attention.
           </span>
           <button type="button" className="link-button" onClick={() => setFilter("attention")}>
             Show
+          </button>
+        </div>
+      )}
+
+      {filter === "attention" && pausedCount > 0 && (
+        <div className="paused-review">
+          <span>
+            {pausedCount} scheduled post{pausedCount === 1 ? " is" : "s are"} paused for review
+          </span>
+          <span className="info-tip">
+            <button type="button" className="info-tip-button" aria-label="Why are they paused?" aria-describedby="paused-explanation">
+              i
+            </button>
+            <span role="tooltip" id="paused-explanation">
+              {PAUSED_EXPLANATION}
+            </span>
+          </span>
+          <button type="button" className="primary" onClick={onResumeSchedules}>
+            Resume schedules
           </button>
         </div>
       )}
@@ -212,7 +239,11 @@ function PostCard({ post, account, onOpen }: { post: Post; account: Account; onO
     <button type="button" className="post-card" onClick={onOpen}>
       {thumb ? <img src={thumb} alt="" loading="lazy" /> : <span className="no-thumb">No photo</span>}
       <span className="post-card-body">
-        <span className={`status status-${post.status}`}>{STATUS_LABEL[post.status]}</span>
+        {isPausedForReview(post, account) ? (
+          <span className="status status-paused">Paused for review</span>
+        ) : (
+          <span className={`status status-${post.status}`}>{STATUS_LABEL[post.status]}</span>
+        )}
         {post.media.length > 1 && <span className="hint">Carousel · {post.media.length} photos</span>}
         <span className="caption-preview">{preview || <em className="hint">No text yet</em>}</span>
         {post.scheduledAt && (post.status === "scheduled" || post.status === "retry_waiting" || post.status === "preparing" || post.status === "publishing") && (

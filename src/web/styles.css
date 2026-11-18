@@ -224,6 +224,13 @@ dialog label { font-weight: 600; }
 .status-published { color: #1d7a3a; }
 .status-needs_attention { color: var(--danger); }
 .status-scheduled { color: var(--info); }
+.status-paused { color: var(--danger); }
+.paused-review { display: flex; flex-wrap: wrap; align-items: center; gap: 0.5rem 0.75rem; padding: 0.6rem 1rem; margin-bottom: 0.75rem; border-radius: var(--radius); background: var(--warn-soft); }
+.paused-review > .primary { margin-left: auto; }
+.info-tip { position: relative; display: inline-flex; }
+.info-tip-button { width: 1.4rem; height: 1.4rem; padding: 0; font-size: 0.8rem; line-height: 1; background: var(--bg); }
+.info-tip [role="tooltip"] { display: none; position: absolute; left: 50%; top: calc(100% + 0.5rem); transform: translateX(-50%); z-index: 10; width: max-content; max-width: 22rem; padding: 0.6rem 0.8rem; border-radius: var(--radius-field); background: var(--fg); color: white; font-size: 0.85rem; box-shadow: 0 8px 24px rgb(0 0 0 / 0.16); }
+.info-tip:hover [role="tooltip"], .info-tip:focus-within [role="tooltip"] { display: block; }
 
 /* Photo library */
 dialog:has(.library) { width: min(52rem, calc(100vw - 2rem)); max-height: calc(100vh - 2rem); }

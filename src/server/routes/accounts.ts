@@ -30,13 +30,13 @@ export interface AccountView {
   updatedAt: string;
 }
 
+// Account-level problems only; schedules paused for review are shown with the paused posts.
 export function publishingBlockers(a: Account): string[] {
   const blockers: string[] = [];
   if (a.archivedAt !== null) blockers.push("Archived accounts never publish.");
   if (a.connectionState === "unconnected") blockers.push("Not connected to a platform account yet.");
   if (a.connectionState === "disconnected") blockers.push("Disconnected. Reconnect to publish.");
   if (a.connectionState === "needs_reconnect") blockers.push("The platform connection expired. Reconnect to publish.");
-  if (a.schedulesNeedReview) blockers.push("Pending schedules are paused until you review them.");
   return blockers;
 }
 

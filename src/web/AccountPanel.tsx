@@ -51,7 +51,7 @@ export function AccountPanel({ account: a, accounts, openPostId, onOpenPost, onN
         </div>
       )}
 
-      {!a.archived && !a.publishing.ready && (
+      {!a.archived && a.publishing.blockers.length > 0 && (
         <section className="banner attention" aria-labelledby="publishing-heading">
           <h2 id="publishing-heading">Won’t publish automatically</h2>
           <ul>
@@ -59,21 +59,19 @@ export function AccountPanel({ account: a, accounts, openPostId, onOpenPost, onN
               <li key={b}>{b}</li>
             ))}
           </ul>
-          {a.schedulesNeedReview && (
-            <p>
-              Pending schedules stay paused after archiving, restoring, connecting or disconnecting, so nothing resumes without your
-              review.{" "}
-              <button type="button" className="link-button" onClick={() => onAcknowledgeReview(a)}>
-                Mark schedules reviewed
-              </button>
-            </p>
-          )}
         </section>
       )}
 
       {!a.archived && !openPostId && a.connection.state === "connected" && identity?.accountType !== "SIMULATED" && <AccountPreview account={a} />}
 
-      <PostsSection account={a} accounts={accounts} openPostId={openPostId} onOpenPost={onOpenPost} onNotice={onNotice} />
+      <PostsSection
+        account={a}
+        accounts={accounts}
+        openPostId={openPostId}
+        onOpenPost={onOpenPost}
+        onNotice={onNotice}
+        onResumeSchedules={() => onAcknowledgeReview(a)}
+      />
 
       {!a.archived && !openPostId && (
         <AccountSettings account={a} onUpdated={onUpdated} onArchive={onArchive} />
