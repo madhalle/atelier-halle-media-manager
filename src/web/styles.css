@@ -1,6 +1,7 @@
 :root {
   /* Always light, whatever the Mac's appearance setting. */
   color-scheme: light;
+  accent-color: var(--accent);
   --bg: #ffffff;
   --fg: #111111;
   --muted: #5f5f5f;
